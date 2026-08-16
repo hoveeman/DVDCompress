@@ -370,7 +370,18 @@ async def websocket_job_endpoint(websocket: WebSocket, job_id: str):
         job_manager.unregister_listener(job_id, queue)
 
 
-# Mount static web frontend if directory exists
-static_path = os.path.join(os.path.dirname(__file__), "static")
-if os.path.exists(static_path):
-    app.mount("/", StaticFiles(directory=static_path, html=True), name="static")
+# Locate and mount static frontend assets
+def _resolve_static_directory() -> Optional[str]:
+    candidates = [
+        os.path.join(os.path.dirname(__file__), "static"),
+        "/app/src/dvdcompress/static",
+        os.path.abspath(os.path.join(os.getcwd(), "src", "dvdcompress", "static")),
+    ]
+    for p in candidates:
+        if os.path.isdir(p) and os.path.isfile(os.path.join(p, "index.html")):
+            return p
+    return None
+
+static_dir = _resolve_static_directory()
+if static_dir:
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
