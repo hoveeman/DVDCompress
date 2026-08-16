@@ -6,7 +6,7 @@
   <Network>bridge</Network>
   <MyIP/>
   <Shell>bash</Shell>
-  <Privileged>false</Privileged>
+  <Privileged>true</Privileged>
   <Support>https://github.com/hoveeman/DVDCompress/issues</Support>
   <Project>https://github.com/hoveeman/DVDCompress</Project>
   <Overview>Hardware-accelerated web application for authoring and burning standard-compliant DVD-Video (VIDEO_TS) and Blu-ray (BDMV) discs and ISO images with NVIDIA GPU acceleration (NVENC/NVDEC) and optical drive pass-through.</Overview>
@@ -24,9 +24,9 @@
   
   <Config Name="WebUI Port" Target="8080" Default="8080" Mode="tcp" Description="Web interface port" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
   
-  <Config Name="Media Directory" Target="/media" Default="/mnt/user/media" Mode="ro" Description="Path to your unencrypted video files (Movies, TV Shows, Home Videos)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media</Config>
+  <Config Name="Media Directory" Target="/media" Default="/mnt/user/Media" Mode="ro" Description="Path to your unencrypted video files (Movies, TV Shows, Home Videos)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/Media</Config>
   
-  <Config Name="Output Directory" Target="/output" Default="/mnt/user/dvd_output" Mode="rw" Description="Destination for created ISO images" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/dvd_output</Config>
+  <Config Name="Output Directory" Target="/output" Default="/mnt/user/Media/dvd_output" Mode="rw" Description="Destination for created ISO images" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/Media/dvd_output</Config>
   
   <Config Name="AppData Config" Target="/config" Default="/mnt/user/appdata/dvdcompress" Mode="rw" Description="Application state and configuration" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/dvdcompress</Config>
   

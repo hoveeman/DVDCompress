@@ -177,8 +177,8 @@ docker run -d \
    - **Repository:** `hovee/dvdcompress:latest`
    - **WebUI:** `http://[IP]:[PORT:8080]`
    - **Port:** `8080` $\rightarrow$ `8080`
-   - **Path 1 (Media):** `/mnt/user/media` $\rightarrow$ `/media` (Read-only)
-   - **Path 2 (Output):** `/mnt/user/data/dvd_output` $\rightarrow$ `/output` (Read/Write)
+   - **Path 1 (Media):** `/mnt/user/Media` $\rightarrow$ `/media` (Read-only)
+   - **Path 2 (Output):** `/mnt/user/Media/dvd_output` $\rightarrow$ `/output` (Read/Write)
    - **Path 3 (Config):** `/mnt/user/appdata/dvdcompress` $\rightarrow$ `/config`
    - **Device 1:** `/dev/sr0` $\rightarrow$ `/dev/sr0`
    - **Device 2:** `/dev/sg0` $\rightarrow$ `/dev/sg0`
