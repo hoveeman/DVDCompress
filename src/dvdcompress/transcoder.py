@@ -43,10 +43,10 @@ def build_dvd_transcode_command(
     if seek_start_sec is not None and seek_start_sec > 0:
         cmd.extend(["-ss", str(seek_start_sec)])
 
+    cmd.extend(["-i", input_file])
+
     if duration_sec is not None and duration_sec > 0:
         cmd.extend(["-t", str(duration_sec)])
-
-    cmd.extend(["-i", input_file])
 
     # Video stream mapping, audio mapping, and subtitle mapping
     cmd.extend(["-map", "0:v:0"])
@@ -114,17 +114,18 @@ def build_bluray_transcode_command(
         cmd.extend(["-hwaccel", "cuda"])
         if seek_start_sec is not None and seek_start_sec > 0:
             cmd.extend(["-ss", str(seek_start_sec)])
+        cmd.extend(["-i", input_file])
         if duration_sec is not None and duration_sec > 0:
             cmd.extend(["-t", str(duration_sec)])
-        cmd.extend(["-i", input_file])
         cmd.extend(["-c:v", "h264_nvenc", "-profile:v", "high", "-level", "4.1"])
     else:
         if seek_start_sec is not None and seek_start_sec > 0:
             cmd.extend(["-ss", str(seek_start_sec)])
+        cmd.extend(["-i", input_file])
         if duration_sec is not None and duration_sec > 0:
             cmd.extend(["-t", str(duration_sec)])
-        cmd.extend(["-i", input_file])
         cmd.extend(["-c:v", "libx264", "-profile:v", "high", "-level", "4.1", "-bluray-compat", "1"])
+
 
     cmd.extend(["-map", "0:v:0", "-map", f"0:{audio_stream_idx}"])
     cmd.extend(["-map", "0:s?", "-c:s", "copy"])

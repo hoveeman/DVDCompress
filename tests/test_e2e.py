@@ -1376,6 +1376,8 @@ async def test_e2e_dvd_preview_video_pipeline(tmp_path, monkeypatch):
     assert cmd[cmd.index("-ss") + 1] == "2670.0"
     assert "-t" in cmd
     assert cmd[cmd.index("-t") + 1] == "60.0"
+    assert cmd.index("-ss") < cmd.index("-i") < cmd.index("-t")
+
 
 
 @pytest.mark.asyncio

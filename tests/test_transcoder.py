@@ -141,6 +141,7 @@ def test_dvd_transcode_command_with_seek_and_duration():
     assert cmd[ss_idx + 1] == "120.0"
     assert "-t" in cmd
     t_idx = cmd.index("-t")
+    assert t_idx > i_idx
     assert cmd[t_idx + 1] == "60.0"
     assert cmd[-1] == "/output/preview.mpg"
 
@@ -160,6 +161,8 @@ def test_bluray_transcode_command_with_seek_and_duration():
     assert cmd[ss_idx + 1] == "300.5"
     assert "-t" in cmd
     t_idx = cmd.index("-t")
+    assert t_idx > i_idx
     assert cmd[t_idx + 1] == "60.0"
     assert cmd[-1] == "/output/preview.m2ts"
+
 
