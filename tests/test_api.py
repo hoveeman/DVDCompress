@@ -448,3 +448,37 @@ def test_api_static_files_serving(tmp_path):
     finally:
         if created and os.path.exists(index_file):
             os.remove(index_file)
+
+
+def test_api_preview_endpoint_validation_and_launch(tmp_path, monkeypatch):
+    # 1. Validation error if input file doesn't exist
+    resp = client.post("/api/preview", json={
+        "input_file": "/nonexistent/video.mkv",
+        "preview_mode": "preview_video",
+        "disc_type": "dvd5",
+        "output_name": "sample_prev"
+    })
+    assert resp.status_code == 404
+
+    # 2. Success case with real file
+    test_media = tmp_path / "sample.mp4"
+    test_media.write_bytes(b"dummy")
+
+    async def fake_start(job_id, scratch_dir, output_dir):
+        pass
+
+    monkeypatch.setattr(job_manager, "start_job", fake_start)
+
+    resp = client.post("/api/preview", json={
+        "input_file": str(test_media),
+        "preview_mode": "preview_video",
+        "disc_type": "dvd5",
+        "output_name": "sample_prev"
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "job_id" in data
+    assert data["status"] == "started"
+    assert data["preview_mode"] == "preview_video"
+    assert "preview_sample_prev.mpg" in data["output_path"]
+

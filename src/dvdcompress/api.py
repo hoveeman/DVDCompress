@@ -339,6 +339,45 @@ async def burn_iso(req: BurnIsoRequest):
     return {"job_id": job_id, "status": "started"}
 
 
+@app.post("/api/preview")
+async def create_preview(req: CreatePreviewRequest):
+    if not os.path.exists(req.input_file):
+        raise HTTPException(
+            status_code=404, detail=f"Input file does not exist: {req.input_file}"
+        )
+
+    clean_name = "".join([c if c.isalnum() else "_" for c in req.output_name.strip()]) or "preview_sample"
+    if clean_name.startswith("preview_"):
+        clean_name = clean_name[len("preview_"):]
+
+    job_id = job_manager.create_job(
+        input_files=[req.input_file],
+        disc_type=req.disc_type,
+        output_mode=req.preview_mode,
+        output_name=clean_name,
+        tv_standard=req.tv_standard,
+        aspect_ratio=req.aspect_ratio,
+        menu_mode=req.menu_mode,
+        use_gpu=req.use_gpu,
+    )
+
+    await job_manager.start_job(
+        job_id, scratch_dir=get_scratch_dir(), output_dir=get_output_dir()
+    )
+
+    ext = ".iso" if req.preview_mode == OutputMode.PREVIEW_ISO else (
+        ".m2ts" if req.disc_type in (DiscType.BD25, DiscType.BD50, DiscType.BD66, DiscType.BD100, DiscType.BD128) else ".mpg"
+    )
+    output_path = os.path.join(get_output_dir(), f"preview_{clean_name}{ext}")
+
+    return {
+        "job_id": job_id,
+        "status": "started",
+        "preview_mode": req.preview_mode.value,
+        "output_path": output_path,
+    }
+
+
 @app.get("/api/jobs")
 def list_jobs():
     return list(job_manager.jobs.values())
