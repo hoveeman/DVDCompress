@@ -17,6 +17,15 @@ from dvdcompress.transcoder import (
     build_bluray_transcode_command,
     parse_ffmpeg_progress_line,
 )
+from dvdcompress.authoring import (
+    generate_dvdauthor_xml,
+    generate_tsmuxer_meta,
+    format_chapter_time,
+)
+from dvdcompress.iso import (
+    build_genisoimage_command,
+    build_xorriso_bd_command,
+)
 
 __all__ = [
     "DiscType",
@@ -33,5 +42,11 @@ __all__ = [
     "build_dvd_transcode_command",
     "build_bluray_transcode_command",
     "parse_ffmpeg_progress_line",
+    "generate_dvdauthor_xml",
+    "generate_tsmuxer_meta",
+    "format_chapter_time",
+    "build_genisoimage_command",
+    "build_xorriso_bd_command",
 ]
+
 
