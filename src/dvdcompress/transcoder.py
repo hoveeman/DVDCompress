@@ -1,8 +1,9 @@
 """Transcoding command builder for DVD-Video and Blu-ray encoding with hardware acceleration."""
 
 import re
-from typing import List, Dict, Any
-from dvdcompress.models import TVStandard, AspectRatio
+from typing import Any, Dict, List, Optional
+from dvdcompress.models import AspectRatio, TVStandard
+
 
 
 def build_dvd_transcode_command(
