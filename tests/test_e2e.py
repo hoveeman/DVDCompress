@@ -1644,14 +1644,14 @@ async def test_e2e_hdr_hable_tonemapping_pipeline(tmp_path, monkeypatch):
 
     job = manager.get_job(job_id)
     assert job.stage == JobStage.COMPLETED
-    assert any("Applying Hable Filmic Tone-Mapping" in log for log in job.logs)
+    assert any("Applying HDR -> SDR Color Matrix Adaptation" in log for log in job.logs)
 
-    # Verify that the transcode command executed with in_color_matrix and Hable tone mapping
+    # Verify that the transcode command executed with in_color_matrix
     ffmpeg_transcode = [c for c in executed_cmds if c[0] == "ffmpeg" and "-vf" in c][0]
     vf_idx = ffmpeg_transcode.index("-vf")
     vf_str = ffmpeg_transcode[vf_idx + 1]
     assert "in_color_matrix=bt2020nc:out_color_matrix=bt601" in vf_str
-    assert "format=gbrpf32le,tonemap=tonemap=hable:desat=0.5,format=yuv420p" in vf_str
+    assert "format=yuv420p" in vf_str
 
 
 @pytest.mark.asyncio

@@ -191,8 +191,8 @@ def test_hdr_and_dolby_vision_filter_format():
     assert "-map 0:s?" not in bd_str
 
 
-def test_hable_tonemapping_filtergraph_for_hdr():
-    """Verify that is_hdr=True injects Hable filmic tone-mapping and color matrix conversion."""
+def test_hdr_color_matrix_adaptation_filtergraph():
+    """Verify that is_hdr=True injects BT.2020 to Rec.601 / Rec.709 color matrix conversion."""
     # 1. DVD with HDR
     dvd_hdr = build_dvd_transcode_command(
         input_file="/media/hdr_clip.mkv",
@@ -202,7 +202,7 @@ def test_hable_tonemapping_filtergraph_for_hdr():
     )
     dvd_hdr_str = " ".join(dvd_hdr)
     assert "in_color_matrix=bt2020nc:out_color_matrix=bt601" in dvd_hdr_str
-    assert "format=gbrpf32le,tonemap=tonemap=hable:desat=0.5,format=yuv420p" in dvd_hdr_str
+    assert "format=yuv420p" in dvd_hdr_str
 
     # 2. Blu-ray with HDR
     bd_hdr = build_bluray_transcode_command(
@@ -213,9 +213,9 @@ def test_hable_tonemapping_filtergraph_for_hdr():
     )
     bd_hdr_str = " ".join(bd_hdr)
     assert "in_color_matrix=bt2020nc:out_color_matrix=bt709" in bd_hdr_str
-    assert "format=gbrpf32le,tonemap=tonemap=hable:desat=0.5,format=yuv420p" in bd_hdr_str
+    assert "format=yuv420p" in bd_hdr_str
 
-    # 3. SDR input should NOT have tonemap=hable
+    # 3. SDR input should NOT have in_color_matrix
     dvd_sdr = build_dvd_transcode_command(
         input_file="/media/sdr_clip.mp4",
         output_mpg="/output/sdr_dvd.mpg",
@@ -223,7 +223,7 @@ def test_hable_tonemapping_filtergraph_for_hdr():
         is_hdr=False,
     )
     dvd_sdr_str = " ".join(dvd_sdr)
-    assert "tonemap=hable" not in dvd_sdr_str
+    assert "in_color_matrix" not in dvd_sdr_str
 
 
 def test_dvd_transcode_maps_only_video_and_audio():
