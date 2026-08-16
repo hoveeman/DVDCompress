@@ -674,3 +674,77 @@ async def test_job_pipeline_subtitle_extraction_and_authoring(tmp_path, monkeypa
     assert sub_cmds[1] == ["ffmpeg", "-y", "-i", media_file, "-map", "0:3", "-c:s", "copy", os.path.join(scratch_dir, job_id, "title_1_sub_1.sup")]
 
 
+@pytest.mark.asyncio
+async def test_job_pipeline_passthrough_execution(tmp_path, monkeypatch):
+    """Verify that UHD Blu-ray with passthrough=True bypasses ffmpeg video transcoding."""
+    manager = JobManager()
+    manager.jobs.clear()
+    media_file = str(tmp_path / "4k_hdr_remux.mkv")
+    with open(media_file, "w") as f:
+        f.write("content")
+
+    output_dir = str(tmp_path / "output")
+    scratch_dir = str(tmp_path / "scratch")
+    os.makedirs(output_dir, exist_ok=True)
+
+    fake_probe_info = MediaInfo(
+        path=media_file,
+        filename="4k_hdr_remux.mkv",
+        duration_sec=7200.0,
+        width=3840,
+        height=2160,
+        aspect_ratio="16:9",
+        frame_rate=23.976,
+        video_codec="hevc",
+        pix_fmt="yuv420p10le",
+        color_transfer="smpte2084",
+        color_primaries="bt2020",
+        is_hdr=True,
+        audio_streams=[AudioStreamInfo(index=1, codec_name="ac3", channels=6)],
+        subtitle_streams=[],
+        size_bytes=45000000000,
+    )
+
+    monkeypatch.setattr("dvdcompress.job_manager.probe_media_file", AsyncMock(return_value=fake_probe_info))
+
+    executed_cmds = []
+
+    class FakeProc:
+        returncode = 0
+        async def wait(self): return 0
+        @property
+        def stderr(self):
+            class Stream:
+                async def read(self, n): return b""
+            return Stream()
+        def send_signal(self, sig): pass
+        def kill(self): pass
+
+    async def fake_exec(*cmd, **kwargs):
+        executed_cmds.append(list(cmd))
+        return FakeProc()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+
+    job_id = manager.create_job(
+        input_files=[media_file],
+        disc_type=DiscType.BD66,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="uhd_passthrough_disc",
+        passthrough=True,
+    )
+
+    await manager.start_job(job_id, scratch_dir=scratch_dir, output_dir=output_dir)
+    await manager.active_tasks[job_id]
+
+    job = manager.get_job(job_id)
+    assert job.stage == JobStage.COMPLETED
+    assert any("Direct Stream Passthrough active" in log for log in job.logs)
+
+    # Verify no ffmpeg transcode command was executed (only tsMuxeR and xorriso)
+    ffmpeg_transcodes = [c for c in executed_cmds if c[0] == "ffmpeg" and "-b:v" in c]
+    assert len(ffmpeg_transcodes) == 0
+    assert any(c[0] == "tsMuxeR" for c in executed_cmds)
+
+
+

@@ -289,7 +289,33 @@ class JobManager:
             for idx, info in enumerate(media_infos):
                 job.current_file_idx = idx + 1
                 out_ext = ".m2ts" if is_bluray else ".mpg"
-                
+
+                # Check passthrough eligibility
+                can_passthrough = False
+                if job.passthrough and not is_preview:
+                    if is_bluray:
+                        if job.disc_type in (DiscType.BD66, DiscType.BD100, DiscType.BD128):
+                            # UHD Blu-ray supports HEVC and AVC
+                            if info.video_codec in ("hevc", "h264"):
+                                can_passthrough = True
+                        else:
+                            # Standard Blu-ray supports H.264 SDR <= 1080p
+                            if info.video_codec == "h264" and not info.is_hdr and info.width <= 1920 and info.height <= 1080:
+                                can_passthrough = True
+                    else:
+                        # DVD supports standard definition MPEG-2
+                        if info.video_codec in ("mpeg2video", "mpeg2") and info.width <= 720:
+                            can_passthrough = True
+
+                if can_passthrough:
+                    self.log(job_id, f"Direct Stream Passthrough active for {info.filename} ({info.video_codec.upper()} -> {job.disc_type.value.upper()}) - Re-encoding bypassed.")
+                    transcoded_files.append(info.path)
+                    job.progress_percent = round((idx + 1) / len(media_infos) * 80.0, 1)
+                    await self.broadcast(job_id)
+                    continue
+                elif job.passthrough and not is_preview:
+                    self.log(job_id, f"Notice: {info.filename} ({info.video_codec}) is not directly compliant with {job.disc_type.value.upper()}; transcoding.")
+
                 # If preview_video, write directly to output_dir
                 if job.output_mode == OutputMode.PREVIEW_VIDEO:
                     clean_name = (
@@ -500,10 +526,12 @@ class JobManager:
             if is_bluray:
                 first_chaps = chapters_list[0] if len(chapters_list) > 0 else None
                 first_subs = extracted_subtitles_by_title[0] if extracted_subtitles_by_title else None
+                video_codecs = [info.video_codec for info in media_infos]
                 meta_content = generate_tsmuxer_meta(
                     transcoded_files,
                     chapters_sec=first_chaps,
                     subtitle_files=first_subs,
+                    video_codecs=video_codecs,
                 )
                 meta_path = os.path.join(work_dir, "tsmuxer.meta")
                 with open(meta_path, "w") as mf:
