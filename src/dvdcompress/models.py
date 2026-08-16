@@ -48,6 +48,8 @@ class SubtitleStreamInfo(BaseModel):
     codec_name: str
     language: Optional[str] = "und"
     title: Optional[str] = None
+    is_default: bool = False
+    is_forced: bool = False
 
 class MediaInfo(BaseModel):
     path: str

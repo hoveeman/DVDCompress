@@ -87,12 +87,17 @@ def parse_ffprobe_output(file_path: str, data: Dict[str, Any]) -> MediaInfo:
             )
         elif c_type == "subtitle":
             tags = s.get("tags") or {}
+            disp = s.get("disposition") or {}
+            is_def = bool(disp.get("default", 0))
+            is_forced = bool(disp.get("forced", 0))
             subtitle_streams.append(
                 SubtitleStreamInfo(
                     index=int(s.get("index", len(subtitle_streams))),
                     codec_name=s.get("codec_name", "unknown"),
                     language=tags.get("language") or "und",
                     title=tags.get("title"),
+                    is_default=is_def,
+                    is_forced=is_forced,
                 )
             )
 

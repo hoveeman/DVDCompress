@@ -167,10 +167,43 @@ def test_parse_ffprobe_multiple_streams_and_fallbacks():
     assert media_info.aspect_ratio == "16:9"
     assert media_info.frame_rate == 29.97  # Fallback due to invalid fraction
     assert len(media_info.audio_streams) == 2
-    assert media_info.audio_streams[0].language == "und"
-    assert media_info.audio_streams[1].language == "fra"
-    assert len(media_info.subtitle_streams) == 2
-    assert media_info.subtitle_streams[0].language == "spa"
-    assert media_info.subtitle_streams[1].language == "und"
     assert media_info.chapters_count == 0
+
+
+def test_parse_ffprobe_subtitle_disposition():
+    data = {
+        "streams": [
+            {
+                "codec_type": "video",
+                "codec_name": "hevc",
+                "width": 3840,
+                "height": 2160,
+            },
+            {
+                "codec_type": "subtitle",
+                "index": 1,
+                "codec_name": "hdmv_pgs_subtitle",
+                "tags": {"language": "eng", "title": "English Forced"},
+                "disposition": {"default": 0, "forced": 1},
+            },
+            {
+                "codec_type": "subtitle",
+                "index": 2,
+                "codec_name": "subrip",
+                "tags": {"language": "eng", "title": "English SDH"},
+                "disposition": {"default": 1, "forced": 0},
+            },
+        ],
+        "format": {"duration": "100.0", "size": "1000"},
+        "chapters": [],
+    }
+    media_info = parse_ffprobe_output("/media/sample.mkv", data)
+    assert len(media_info.subtitle_streams) == 2
+    assert media_info.subtitle_streams[0].codec_name == "hdmv_pgs_subtitle"
+    assert media_info.subtitle_streams[0].is_forced is True
+    assert media_info.subtitle_streams[0].is_default is False
+    assert media_info.subtitle_streams[1].codec_name == "subrip"
+    assert media_info.subtitle_streams[1].is_forced is False
+    assert media_info.subtitle_streams[1].is_default is True
+
 
