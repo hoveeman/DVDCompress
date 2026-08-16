@@ -130,3 +130,13 @@ def test_generate_dvdauthor_xml_with_subpictures():
     assert '<subpicture lang="en" />' in xml
     assert '<subpicture lang="es" />' in xml
 
+
+def test_generate_tsmuxer_meta_hevc_uhd():
+    meta = generate_tsmuxer_meta(
+        video_files=["/media/uhd_remux.mkv"],
+        video_codecs=["hevc"],
+    )
+    assert 'V_MPEGH/ISO/HEVC, "/media/uhd_remux.mkv", fps=23.976, insertSEI, contSPS' in meta
+    assert 'A_AC3, "/media/uhd_remux.mkv"' in meta
+
+

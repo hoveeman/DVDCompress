@@ -117,6 +117,7 @@ def generate_tsmuxer_meta(
     video_files: List[str],
     chapters_sec: Optional[List[float]] = None,
     subtitle_files: Optional[List[Dict[str, Any]]] = None,
+    video_codecs: Optional[List[str]] = None,
 ) -> str:
     """Generate tsMuxeR .meta file content for Blu-ray BDMV muxing."""
     if chapters_sec and len(chapters_sec) > 0:
@@ -128,8 +129,12 @@ def generate_tsmuxer_meta(
     meta_lines = [
         f"MUXOPT --no-pcr-on-video-pid --new-audio-pes --blu-ray --vbr {chap_opt}"
     ]
-    for vf in video_files:
-        meta_lines.append(f'V_MPEG4/ISO/AVC, "{vf}", fps=23.976, insertSEI, contSPS')
+    for idx, vf in enumerate(video_files):
+        vcodec = video_codecs[idx] if (video_codecs and idx < len(video_codecs)) else "h264"
+        if vcodec == "hevc":
+            meta_lines.append(f'V_MPEGH/ISO/HEVC, "{vf}", fps=23.976, insertSEI, contSPS')
+        else:
+            meta_lines.append(f'V_MPEG4/ISO/AVC, "{vf}", fps=23.976, insertSEI, contSPS')
         meta_lines.append(f'A_AC3, "{vf}"')
 
     if subtitle_files:
