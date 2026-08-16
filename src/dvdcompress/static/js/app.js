@@ -132,10 +132,13 @@
     setupSegmentGroup('control-disc-type', (val) => {
       state.config.disc_type = val;
       const subtitleMap = {
-        dvd5: 'Target: DVD-5 (4,480 MB)',
-        dvd9: 'Target: DVD-9 (8,150 MB)',
-        bd25: 'Target: BD-25 (23,800 MB)',
-        bd50: 'Target: BD-50 (47,600 MB)'
+        dvd5: 'Target: DVD-5 (4,300 MB)',
+        dvd9: 'Target: DVD-9 (7,850 MB)',
+        bd25: 'Target: BD-25 (23,000 MB)',
+        bd50: 'Target: BD-50 (46,000 MB)',
+        bd66: 'Target: BD-66 UHD (61,500 MB)',
+        bd100: 'Target: BDXL BD-100 (92,000 MB)',
+        bd128: 'Target: BDXL BD-128 (118,000 MB)',
       };
       const sub = document.getElementById('gauge-subtitle');
       if (sub) sub.textContent = subtitleMap[val] || 'Target Capacity';

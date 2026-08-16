@@ -9,6 +9,9 @@ DISC_CAPACITIES_MB = {
     DiscType.DVD9: 7850.0,
     DiscType.BD25: 23000.0,
     DiscType.BD50: 46000.0,
+    DiscType.BD66: 61500.0,
+    DiscType.BD100: 92000.0,
+    DiscType.BD128: 118000.0,
 }
 
 # Bitrate constraints in kbps

@@ -9,6 +9,9 @@ class DiscType(str, Enum):
     DVD9 = "dvd9"
     BD25 = "bd25"
     BD50 = "bd50"
+    BD66 = "bd66"
+    BD100 = "bd100"
+    BD128 = "bd128"
 
 class TVStandard(str, Enum):
     AUTO = "auto"

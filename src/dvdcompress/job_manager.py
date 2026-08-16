@@ -263,7 +263,13 @@ class JobManager:
             job.stage = JobStage.TRANSCODING
             await self.broadcast(job_id)
 
-            is_bluray = job.disc_type in (DiscType.BD25, DiscType.BD50)
+            is_bluray = job.disc_type in (
+                DiscType.BD25,
+                DiscType.BD50,
+                DiscType.BD66,
+                DiscType.BD100,
+                DiscType.BD128,
+            )
             transcoded_files = []
 
             for idx, info in enumerate(media_infos):

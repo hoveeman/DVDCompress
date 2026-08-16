@@ -103,6 +103,30 @@ def test_bd50_clamping_short_video():
     assert budget.fits_disc is True
 
 
+def test_bdxl_bd100_and_bd128_calculation():
+    # 6 hour 4K/HD collection (21600 sec) on BD-100
+    budget_100 = calculate_bitrate_budget(
+        total_duration_sec=21600,
+        disc_type=DiscType.BD100,
+        audio_tracks_kbps=[640],
+        video_count=6,
+    )
+    assert budget_100.target_capacity_mb == 92000.0
+    assert budget_100.video_bitrate_kbps > 25000
+    assert budget_100.fits_disc is True
+
+    # 10 hour TV series (36000 sec) on BD-128
+    budget_128 = calculate_bitrate_budget(
+        total_duration_sec=36000,
+        disc_type=DiscType.BD128,
+        audio_tracks_kbps=[640],
+        video_count=10,
+    )
+    assert budget_128.target_capacity_mb == 118000.0
+    assert budget_128.video_bitrate_kbps > 20000
+    assert budget_128.fits_disc is True
+
+
 def test_zero_or_negative_duration_handling():
     budget = calculate_bitrate_budget(
         total_duration_sec=0,
