@@ -316,6 +316,11 @@ async def burn_iso(req: BurnIsoRequest):
     return {"job_id": job_id, "status": "started"}
 
 
+@app.get("/api/jobs")
+def list_jobs():
+    return list(job_manager.jobs.values())
+
+
 @app.get("/api/jobs/{job_id}")
 def get_job_status(job_id: str):
     job = job_manager.get_job(job_id)

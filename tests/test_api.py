@@ -413,13 +413,16 @@ def test_api_static_files_serving(tmp_path):
     static_dir = os.path.join(os.path.dirname(__file__), "..", "src", "dvdcompress", "static")
     os.makedirs(static_dir, exist_ok=True)
     index_file = os.path.join(static_dir, "index.html")
-    with open(index_file, "w") as f:
-        f.write("<html><body>DVDCompress Web UI</body></html>")
+    created = False
+    if not os.path.exists(index_file):
+        with open(index_file, "w") as f:
+            f.write("<html><body>DVDCompress</body></html>")
+        created = True
 
     try:
         res = client.get("/")
         assert res.status_code == 200
-        assert "DVDCompress Web UI" in res.text
+        assert "DVDCompress" in res.text
     finally:
-        if os.path.exists(index_file):
+        if created and os.path.exists(index_file):
             os.remove(index_file)

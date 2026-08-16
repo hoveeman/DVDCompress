@@ -1,0 +1,109 @@
+"""Automated tests for DVDCompress Web UI static assets and endpoints."""
+
+import os
+import pytest
+from fastapi.testclient import TestClient
+
+from dvdcompress.api import app
+
+client = TestClient(app)
+
+
+def test_index_html_served():
+    """Verify that root URL '/' correctly serves the index.html page."""
+    res = client.get("/")
+    assert res.status_code == 200
+    assert "text/html" in res.headers.get("content-type", "")
+    html = res.text
+
+    # Title & Metadata
+    assert "DVDCompress" in html
+    assert "Modern DVD &amp; Blu-ray Authoring" in html or "Modern DVD & Blu-ray Authoring" in html
+
+    # Header & Telemetry
+    assert 'id="gpu-telemetry-chip"' in html
+    assert 'id="sys-status-chip"' in html
+
+    # Navigation Tabs
+    assert 'id="tab-btn-authoring"' in html
+    assert 'id="tab-btn-burner"' in html
+    assert 'id="tab-btn-jobs"' in html
+
+    # Media Explorer & Playlist
+    assert 'id="browser-card"' in html
+    assert 'id="browser-table-body"' in html
+    assert 'id="playlist-container"' in html
+    assert 'id="btn-clear-queue"' in html
+
+    # Capacity Gauge & Bitrate Controls
+    assert 'id="gauge-card"' in html
+    assert 'id="capacity-bar-video"' in html
+    assert 'id="stat-video-bitrate"' in html
+    assert 'id="stat-capacity-usage"' in html
+
+    # Disc Configuration
+    assert 'id="input-output-name"' in html
+    assert 'id="control-disc-type"' in html
+    assert 'id="control-tv-standard"' in html
+    assert 'id="control-aspect-ratio"' in html
+    assert 'id="control-menu-mode"' in html
+    assert 'id="select-output-mode"' in html
+    assert 'id="toggle-gpu"' in html
+    assert 'id="btn-start-project"' in html
+
+    # Standalone ISO Burner Tab
+    assert 'id="input-burn-iso-path"' in html
+    assert 'id="select-standalone-drive"' in html
+    assert 'id="btn-start-burn-iso"' in html
+
+    # Active Pipeline & Terminal
+    assert 'id="pipeline-stepper"' in html
+    assert 'id="metric-overall-progress"' in html
+    assert 'id="terminal-logs"' in html
+    assert 'id="btn-cancel-job"' in html
+    assert 'id="jobs-history-table"' in html
+
+
+def test_css_stylesheet_served():
+    """Verify that CSS stylesheet is served with proper content-type and tokens."""
+    res = client.get("/css/style.css")
+    assert res.status_code == 200
+    assert "text/css" in res.headers.get("content-type", "")
+    css = res.text
+
+    # Design tokens & color system
+    assert "--bg-base:" in css
+    assert "--bg-surface:" in css
+    assert "--accent-primary:" in css
+    assert "--color-success:" in css
+    assert "--color-danger:" in css
+
+    # Component classes
+    assert ".app-header" in css
+    assert ".telemetry-chip" in css
+    assert ".nav-tab" in css
+    assert ".progress-segment" in css
+    assert ".pipeline-tracker" in css
+    assert ".terminal-window" in css
+    assert ".status-pill" in css
+
+
+def test_javascript_app_served():
+    """Verify that JavaScript app bundle is served with proper content-type and logic."""
+    res = client.get("/js/app.js")
+    assert res.status_code == 200
+    assert any(ct in res.headers.get("content-type", "") for ct in ["javascript", "text/plain"])
+    js = res.text
+
+    # Key functions & state management
+    assert "loadBrowserPath" in js
+    assert "addFileToPlaylist" in js
+    assert "recalculateBudget" in js
+    assert "connectJobWebSocket" in js
+    assert "startProject" in js
+    assert "startBurnIso" in js
+    assert "pollHardwareTelemetry" in js
+    assert "/api/files" in js
+    assert "/api/calculate" in js
+    assert "/api/drives" in js
+    assert "/ws/jobs/" in js

@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DVDCompress - Modern DVD &amp; Blu-ray Authoring &amp; Burning</title>
+  <meta name="description" content="High-performance GPU-accelerated DVD and Blu-ray authoring, compression, and disc burning suite.">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%233b82f6%22><circle cx=%2212%22 cy=%2212%22 r=%2210%22/><circle cx=%2212%22 cy=%2212%22 r=%223%22 fill=%22%230b0f17%22/></svg>">
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand-section">
+        <div class="brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </div>
+        <div class="brand-info">
+          <h1 class="brand-title">DVDCompress</h1>
+          <span class="brand-version" id="app-version">v1.0.0</span>
+        </div>
+      </div>
+
+      <div class="telemetry-section" id="telemetry-container">
+        <div class="telemetry-chip" id="gpu-telemetry-chip" title="Hardware Acceleration Telemetry">
+          <svg class="chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+            <line x1="6" y1="6" x2="6.01" y2="6"></line>
+            <line x1="6" y1="18" x2="6.01" y2="18"></line>
+          </svg>
+          <span class="chip-label">GPU:</span>
+          <span class="chip-val" id="telemetry-gpu-status">Detecting...</span>
+        </div>
+
+        <div class="telemetry-chip" id="sys-status-chip">
+          <span class="status-dot" id="system-status-dot"></span>
+          <span class="chip-label">System:</span>
+          <span class="chip-val" id="system-status-text">Online</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="app-nav" aria-label="Main Navigation">
+    <div class="nav-container" role="tablist">
+      <button class="nav-tab active" id="tab-btn-authoring" role="tab" aria-selected="true" aria-controls="view-authoring" data-target="view-authoring">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polygon points="10 8 16 12 10 16 10 8"></polygon>
+        </svg>
+        Disc Authoring &amp; Compression
+      </button>
+
+      <button class="nav-tab" id="tab-btn-burner" role="tab" aria-selected="false" aria-controls="view-burner" data-target="view-burner">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+        </svg>
+        Burn Existing ISO
+      </button>
+
+      <button class="nav-tab" id="tab-btn-jobs" role="tab" aria-selected="false" aria-controls="view-jobs" data-target="view-jobs">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="20" x2="18" y2="10"></line>
+          <line x1="12" y1="20" x2="12" y2="4"></line>
+          <line x1="6" y1="20" x2="6" y2="14"></line>
+        </svg>
+        Active Pipeline &amp; History
+        <span class="tab-badge" id="active-jobs-badge" style="display: none;">0</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="app-main" id="app-main-content">
+    
+    <!-- VIEW 1: Disc Authoring & Compression -->
+    <div class="tab-view active" id="view-authoring" role="tabpanel" aria-labelledby="tab-btn-authoring">
+      <div class="authoring-grid">
+        
+        <!-- Left Content Column -->
+        <div class="content-column">
+          
+          <!-- File Browser Card -->
+          <section class="card" id="browser-card" aria-label="Media File Explorer">
+            <header class="card-header">
+              <div class="card-title-group">
+                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <div>
+                  <h2 class="card-title">Media Explorer</h2>
+                  <p class="card-subtitle">Browse videos to add to your disc project</p>
+                </div>
+              </div>
+              <div class="browser-actions">
+                <button class="btn btn-secondary btn-sm" id="btn-path-media" title="Go to /media root">/media</button>
+                <button class="btn btn-secondary btn-sm" id="btn-path-output" title="Go to /output root">/output</button>
+                <button class="btn btn-secondary btn-sm" id="btn-browser-parent" title="Up one level">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="19" x2="12" y2="5"></line>
+                    <polyline points="5 12 12 5 19 12"></polyline>
+                  </svg>
+                  Up
+                </button>
+                <button class="btn btn-secondary btn-sm" id="btn-browser-refresh" title="Refresh files">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                </button>
+              </div>
+            </header>
+
+            <div class="card-body">
+              <div class="browser-toolbar">
+                <div class="path-bar" id="browser-path-bar">
+                  <span class="path-segment">/media</span>
+                </div>
+              </div>
+
+              <div class="file-table-container">
+                <table class="file-table" id="browser-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th style="width: 100px;">Size</th>
+                      <th style="width: 90px; text-align: right;">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="browser-table-body">
+                    <!-- Populated dynamically -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- Playlist / Video Queue Card -->
+          <section class="card" id="playlist-card" aria-label="Disc Project Playlist">
+            <header class="card-header">
+              <div class="card-title-group">
+                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="8" y1="6" x2="21" y2="6"></line>
+                  <line x1="8" y1="12" x2="21" y2="12"></line>
+                  <line x1="8" y1="18" x2="21" y2="18"></line>
+                  <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                  <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                  <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                </svg>
+                <div>
+                  <h2 class="card-title">Project Video Titles</h2>
+                  <p class="card-subtitle">Organize and configure title order for disc authoring</p>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span class="badge badge-stream" id="queue-count-badge">0 Titles</span>
+                <button class="btn btn-secondary btn-sm" id="btn-clear-queue">Clear All</button>
+              </div>
+            </header>
+
+            <div class="card-body">
+              <div id="playlist-container" class="playlist-list">
+                <!-- Populated dynamically -->
+              </div>
+              
+              <div id="playlist-empty" class="empty-state">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+                  <line x1="7" y1="2" x2="7" y2="22"></line>
+                  <line x1="17" y1="2" x2="17" y2="22"></line>
+                  <line x1="2" y1="12" x2="22" y2="12"></line>
+                </svg>
+                <div class="empty-state-title">No videos added yet</div>
+                <div class="empty-state-desc">Select videos from the Media Explorer above to build your disc project.</div>
+              </div>
+            </div>
+
+            <div class="card-footer" id="playlist-summary-footer">
+              <div style="display: flex; gap: 1rem; font-size: 0.8rem; color: var(--text-secondary);">
+                <span>Total Duration: <strong id="queue-duration-text" style="color: var(--text-primary);">00:00:00</strong></span>
+                <span>Total Source: <strong id="queue-size-text" style="color: var(--text-primary);">0 MB</strong></span>
+              </div>
+            </div>
+          </section>
+
+        </div>
+
+        <!-- Right Sidebar Column: Capacity Gauge & Configurator -->
+        <aside class="sidebar-column">
+          
+          <!-- Dynamic Disc Capacity Gauge Card -->
+          <section class="card" id="gauge-card" aria-label="Dynamic Bitrate and Capacity Gauge">
+            <header class="card-header">
+              <div class="card-title-group">
+                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
+                </svg>
+                <div>
+                  <h2 class="card-title">Disc Capacity Gauge</h2>
+                  <p class="card-subtitle" id="gauge-subtitle">Target: DVD-5 (4,480 MB)</p>
+                </div>
+              </div>
+            </header>
+
+            <div class="card-body">
+              <div class="gauge-container">
+                <div class="gauge-header">
+                  <span class="gauge-title">Allocation</span>
+                  <span class="gauge-percent" id="gauge-percent-text">0.0%</span>
+                </div>
+
+                <div class="progress-bar-container" title="Disc allocation breakdown">
+                  <div class="progress-segment video" id="capacity-bar-video" style="width: 0%;" title="Video Allocation"></div>
+                  <div class="progress-segment audio" id="capacity-bar-audio" style="width: 0%;" title="Audio Allocation"></div>
+                  <div class="progress-segment overhead" id="capacity-bar-overhead" style="width: 0%;" title="Muxing Overhead"></div>
+                  <div class="progress-segment overflow" id="capacity-bar-overflow" style="width: 0%;" title="Capacity Overflow"></div>
+                </div>
+
+                <div class="gauge-legend">
+                  <div class="legend-item"><span class="legend-dot video"></span> Video</div>
+                  <div class="legend-item"><span class="legend-dot audio"></span> Audio</div>
+                  <div class="legend-item"><span class="legend-dot overhead"></span> Overhead</div>
+                  <div class="legend-item"><span class="legend-dot free"></span> Free</div>
+                </div>
+
+                <div class="stats-grid">
+                  <div class="stat-box">
+                    <span class="stat-label">Video Bitrate</span>
+                    <span class="stat-value" id="stat-video-bitrate">0 kbps</span>
+                  </div>
+                  <div class="stat-box">
+                    <span class="stat-label">Audio Bitrate</span>
+                    <span class="stat-value" id="stat-audio-bitrate">192 kbps</span>
+                  </div>
+                  <div class="stat-box">
+                    <span class="stat-label">Mux Overhead</span>
+                    <span class="stat-value" id="stat-mux-overhead">0 kbps</span>
+                  </div>
+                  <div class="stat-box">
+                    <span class="stat-label">Disc Usage</span>
+                    <span class="stat-value" id="stat-capacity-usage">0 / 4,480 MB</span>
+                  </div>
+                </div>
+
+                <div id="gauge-warnings-container">
+                  <!-- Injected warnings -->
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Disc Settings Card -->
+          <section class="card" id="config-card" aria-label="Disc Authoring Settings">
+            <header class="card-header">
+              <div class="card-title-group">
+                <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+                <div>
+                  <h2 class="card-title">Disc Configuration</h2>
+                  <p class="card-subtitle">Standards, format and hardware settings</p>
+                </div>
+              </div>
+            </header>
+
+            <div class="card-body">
+              <!-- Output Name -->
+              <div class="form-group">
+                <label class="form-label" for="input-output-name">Project / Disc Label</label>
+                <input type="text" id="input-output-name" class="form-input" value="DVD_PROJECT" placeholder="e.g. MY_FAVORITE_MOVIE" maxlength="32">
+              </div>
+
+              <!-- Disc Type -->
+              <div class="form-group">
+                <label class="form-label">Disc Format</label>
+                <div class="segmented-control" id="control-disc-type">
+                  <button type="button" class="segmented-option active" data-value="dvd5">DVD-5 (4.7G)</button>
+                  <button type="button" class="segmented-option" data-value="dvd9">DVD-9 (8.5G)</button>
+                  <button type="button" class="segmented-option" data-value="bd25">BD-25 (25G)</button>
+                  <button type="button" class="segmented-option" data-value="bd50">BD-50 (50G)</button>
+                </div>
+              </div>
+
+              <!-- TV Standard -->
+              <div class="form-group">
+                <label class="form-label">TV Standard</label>
+                <div class="segmented-control" id="control-tv-standard">
+                  <button type="button" class="segmented-option active" data-value="auto">Auto</button>
+                  <button type="button" class="segmented-option" data-value="ntsc">NTSC (480p)</button>
+                  <button type="button" class="segmented-option" data-value="pal">PAL (576p)</button>
+                </div>
+              </div>
+
+              <!-- Aspect Ratio -->
+              <div class="form-group">
+                <label class="form-label">Aspect Ratio</label>
+                <div class="segmented-control" id="control-aspect-ratio">
+                  <button type="button" class="segmented-option active" data-value="16:9">16:9 Widescreen</button>
+                  <button type="button" class="segmented-option" data-value="4:3">4:3 Fullscreen</button>
+                </div>
+              </div>
+
+              <!-- Playback Mode -->
+              <div class="form-group">
+                <label class="form-label">Playback Mode</label>
+                <div class="segmented-control" id="control-menu-mode">
+                  <button type="button" class="segmented-option active" data-value="autoplay">Autoplay (Direct)</button>
+                  <button type="button" class="segmented-option" data-value="menu">Title Menu</button>
+                </div>
+              </div>
+
+              <!-- Output Action -->
+              <div class="form-group">
+                <label class="form-label">Output Action</label>
+                <select id="select-output-mode" class="form-select">
+                  <option value="iso_only">Create ISO Image Only (.iso)</option>
+                  <option value="author_and_burn">Author &amp; Burn to Optical Disc</option>
+                  <option value="burn_direct">Burn Direct</option>
+                </select>
+              </div>
+
+              <!-- Burner Device & Speed (Conditional) -->
+              <div id="burner-options-group" style="display: none;">
+                <div class="form-group">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <label class="form-label" for="select-burner-device">Optical Burner Drive</label>
+                    <button class="btn btn-secondary btn-sm" id="btn-rescan-drives" type="button" style="padding: 1px 6px; font-size: 0.7rem;">Rescan</button>
+                  </div>
+                  <select id="select-burner-device" class="form-select">
+                    <option value="">Scanning drives...</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="select-burn-speed">Burn Speed</label>
+                  <select id="select-burn-speed" class="form-select">
+                    <option value="2">2x (Maximum Stability)</option>
+                    <option value="4" selected>4x (Recommended)</option>
+                    <option value="8">8x (Fast)</option>
+                    <option value="16">Max / 16x</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Hardware Acceleration Switch -->
+              <div class="toggle-wrapper" style="margin-top: 1rem;">
+                <div class="toggle-label-group">
+                  <span class="toggle-title">GPU Acceleration</span>
+                  <span class="toggle-desc" id="gpu-toggle-desc">NVIDIA NVENC / CUDA</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="toggle-gpu" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="card-footer" style="flex-direction: column; gap: 0.75rem;">
+              <button class="btn btn-primary btn-lg" id="btn-start-project" style="width: 100%;" disabled>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                <span>Start Disc Project</span>
+              </button>
+            </div>
+          </section>
+
+        </aside>
+
+      </div>
+    </div>
+
+    <!-- VIEW 2: Standalone Burn Existing ISO -->
+    <div class="tab-view" id="view-burner" role="tabpanel" aria-labelledby="tab-btn-burner">
+      <div style="max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.5rem;">
+        
+        <section class="card" aria-label="Burn Existing ISO Image">
+          <header class="card-header">
+            <div class="card-title-group">
+              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <div>
+                <h2 class="card-title">Standalone ISO Burner</h2>
+                <p class="card-subtitle">Burn existing pre-built ISO images directly to optical disc media</p>
+              </div>
+            </div>
+          </header>
+
+          <div class="card-body">
+            <div class="form-group">
+              <label class="form-label" for="input-burn-iso-path">ISO Image File Path</label>
+              <input type="text" id="input-burn-iso-path" class="form-input" placeholder="/output/disc_image.iso">
+            </div>
+
+            <div style="margin-bottom: 1.25rem;">
+              <span class="form-label" style="display: block; margin-bottom: 0.5rem;">Quick Select from /output</span>
+              <div id="iso-quick-list" style="display: flex; flex-direction: column; gap: 0.4rem; max-height: 160px; overflow-y: auto;">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Disc Media Type</label>
+              <div class="segmented-control" id="control-burner-media-type">
+                <button type="button" class="segmented-option active" data-value="dvd">DVD-R / DVD+R</button>
+                <button type="button" class="segmented-option" data-value="bluray">Blu-ray (BD-R)</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="select-standalone-drive">Optical Burner Drive</label>
+              <select id="select-standalone-drive" class="form-select">
+                <option value="">Scanning drives...</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="select-standalone-speed">Burn Speed</label>
+              <select id="select-standalone-speed" class="form-select">
+                <option value="2">2x (Maximum Safety)</option>
+                <option value="4" selected>4x (Recommended)</option>
+                <option value="8">8x (High Speed)</option>
+                <option value="16">Max / 16x</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="card-footer">
+            <button class="btn btn-primary btn-lg" id="btn-start-burn-iso" style="width: 100%;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+              </svg>
+              Burn ISO to Disc
+            </button>
+          </div>
+        </section>
+
+      </div>
+    </div>
+
+    <!-- VIEW 3: Active Pipeline & Job History -->
+    <div class="tab-view" id="view-jobs" role="tabpanel" aria-labelledby="tab-btn-jobs">
+      <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+        
+        <!-- Active Pipeline Monitor Panel -->
+        <section class="card" id="pipeline-panel" aria-label="Active Job Pipeline Tracker">
+          <header class="card-header">
+            <div class="card-title-group">
+              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+              <div>
+                <h2 class="card-title" id="pipeline-job-title">Active Job Pipeline</h2>
+                <p class="card-subtitle" id="pipeline-job-subtitle">No active job currently running</p>
+              </div>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <span class="status-pill idle" id="pipeline-stage-badge">IDLE</span>
+              <button class="btn btn-danger btn-sm" id="btn-cancel-job" style="display: none;">Cancel Job</button>
+            </div>
+          </header>
+
+          <div class="card-body">
+            
+            <!-- 5-Stage Stepper -->
+            <div class="pipeline-tracker" id="pipeline-stepper">
+              <div class="stage-step" id="step-probing" data-stage="probing">
+                <div class="stage-bubble">1</div>
+                <span class="stage-label">Analyze</span>
+              </div>
+              <div class="stage-step" id="step-transcoding" data-stage="transcoding">
+                <div class="stage-bubble">2</div>
+                <span class="stage-label">Transcode</span>
+              </div>
+              <div class="stage-step" id="step-authoring" data-stage="authoring">
+                <div class="stage-bubble">3</div>
+                <span class="stage-label">Author</span>
+              </div>
+              <div class="stage-step" id="step-mastering_iso" data-stage="mastering_iso">
+                <div class="stage-bubble">4</div>
+                <span class="stage-label">Master ISO</span>
+              </div>
+              <div class="stage-step" id="step-burning" data-stage="burning">
+                <div class="stage-bubble">5</div>
+                <span class="stage-label">Burn Disc</span>
+              </div>
+            </div>
+
+            <!-- Metrics Cards Grid -->
+            <div class="metrics-row">
+              <div class="metric-card">
+                <span class="metric-card-label">Overall Progress</span>
+                <span class="metric-card-val" id="metric-overall-progress">0.0%</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-card-label">Current Stage</span>
+                <span class="metric-card-val" id="metric-stage-progress">0.0%</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-card-label">Encoding Speed</span>
+                <span class="metric-card-val" id="metric-fps-speed">-- FPS (1.0x)</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-card-label">ETA Remaining</span>
+                <span class="metric-card-val" id="metric-eta">--:--</span>
+              </div>
+            </div>
+
+            <!-- Live Terminal Window -->
+            <div class="terminal-window">
+              <div class="terminal-header">
+                <span>Console Output</span>
+                <div class="terminal-actions">
+                  <label style="display: flex; align-items: center; gap: 0.3rem; cursor: pointer;">
+                    <input type="checkbox" id="chk-autoscroll" checked>
+                    <span>Auto-scroll</span>
+                  </label>
+                  <button class="btn btn-secondary btn-sm" id="btn-copy-logs" title="Copy log output">Copy</button>
+                  <button class="btn btn-secondary btn-sm" id="btn-clear-logs" title="Clear console">Clear</button>
+                </div>
+              </div>
+              <div class="terminal-body" id="terminal-logs">
+                <div class="log-line info">[SYSTEM] DVDCompress Pipeline Ready.</div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- Job History Table Section -->
+        <section class="card" aria-label="Recent Job History">
+          <header class="card-header">
+            <div class="card-title-group">
+              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 14 14"></polyline>
+              </svg>
+              <div>
+                <h2 class="card-title">Job History</h2>
+                <p class="card-subtitle">Session jobs and task statuses</p>
+              </div>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-refresh-jobs">Refresh</button>
+          </header>
+
+          <div class="card-body" style="padding: 0;">
+            <table class="jobs-table" id="jobs-history-table">
+              <thead>
+                <tr>
+                  <th>Job ID</th>
+                  <th>Project Name</th>
+                  <th>Format</th>
+                  <th>Mode</th>
+                  <th>Status</th>
+                  <th>Progress</th>
+                  <th style="text-align: right;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="jobs-table-body">
+                <!-- Populated dynamically -->
+              </tbody>
+            </table>
+
+            <div id="jobs-empty" class="empty-state">
+              <div class="empty-state-title">No jobs found</div>
+              <div class="empty-state-desc">Started authoring or burn tasks will appear here.</div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+  <!-- JavaScript Client App -->
+  <script src="/js/app.js"></script>
+</body>
+</html>
