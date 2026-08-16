@@ -14,6 +14,8 @@ def build_dvd_transcode_command(
     tv_standard: TVStandard = TVStandard.NTSC,
     aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9,
     use_gpu: bool = False,
+    seek_start_sec: Optional[float] = None,
+    duration_sec: Optional[float] = None,
 ) -> List[str]:
     """Build FFmpeg command line arguments for DVD-Video compliant MPEG-2 transcoding.
 
@@ -26,6 +28,8 @@ def build_dvd_transcode_command(
         tv_standard: TV standard (NTSC or PAL, AUTO defaults to NTSC).
         aspect_ratio: Display aspect ratio (16:9 or 4:3).
         use_gpu: Enable CUDA hardware acceleration for decoding.
+        seek_start_sec: Optional seek start timestamp in seconds for preview clipping.
+        duration_sec: Optional duration in seconds for preview clipping.
 
     Returns:
         List of command-line arguments starting with 'ffmpeg'.
@@ -34,6 +38,12 @@ def build_dvd_transcode_command(
 
     if use_gpu:
         cmd.extend(["-hwaccel", "cuda"])
+
+    if seek_start_sec is not None and seek_start_sec > 0:
+        cmd.extend(["-ss", str(seek_start_sec)])
+
+    if duration_sec is not None and duration_sec > 0:
+        cmd.extend(["-t", str(duration_sec)])
 
     cmd.extend(["-i", input_file])
 
@@ -80,6 +90,8 @@ def build_bluray_transcode_command(
     audio_stream_idx: int = 1,
     audio_channels: int = 6,
     use_gpu: bool = False,
+    seek_start_sec: Optional[float] = None,
+    duration_sec: Optional[float] = None,
 ) -> List[str]:
     """Build FFmpeg command line arguments for Blu-ray compliant H.264/AVC transcoding.
 
@@ -90,15 +102,26 @@ def build_bluray_transcode_command(
         audio_stream_idx: Zero-based stream index of audio in input file.
         audio_channels: Number of audio channels (e.g. 2 for stereo, 6 for 5.1).
         use_gpu: Enable NVENC hardware acceleration for encoding.
+        seek_start_sec: Optional seek start timestamp in seconds for preview clipping.
+        duration_sec: Optional duration in seconds for preview clipping.
 
     Returns:
         List of command-line arguments starting with 'ffmpeg'.
     """
     cmd = ["ffmpeg", "-y"]
     if use_gpu:
-        cmd.extend(["-hwaccel", "cuda", "-i", input_file])
+        cmd.extend(["-hwaccel", "cuda"])
+        if seek_start_sec is not None and seek_start_sec > 0:
+            cmd.extend(["-ss", str(seek_start_sec)])
+        if duration_sec is not None and duration_sec > 0:
+            cmd.extend(["-t", str(duration_sec)])
+        cmd.extend(["-i", input_file])
         cmd.extend(["-c:v", "h264_nvenc", "-profile:v", "high", "-level", "4.1"])
     else:
+        if seek_start_sec is not None and seek_start_sec > 0:
+            cmd.extend(["-ss", str(seek_start_sec)])
+        if duration_sec is not None and duration_sec > 0:
+            cmd.extend(["-t", str(duration_sec)])
         cmd.extend(["-i", input_file])
         cmd.extend(["-c:v", "libx264", "-profile:v", "high", "-level", "4.1", "-bluray-compat", "1"])
 

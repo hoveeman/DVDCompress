@@ -122,3 +122,44 @@ def test_parse_ffmpeg_progress_empty_or_partial():
     line_no_match = "Input #0, matroska,webm, from '/media/input.mkv':"
     progress_empty = parse_ffmpeg_progress_line(line_no_match)
     assert progress_empty == {}
+
+def test_dvd_transcode_command_with_seek_and_duration():
+    cmd = build_dvd_transcode_command(
+        input_file="/media/test.mkv",
+        output_mpg="/output/preview.mpg",
+        video_bitrate_kbps=6000,
+        seek_start_sec=120.0,
+        duration_sec=60.0,
+        tv_standard=TVStandard.NTSC,
+        aspect_ratio=AspectRatio.RATIO_16_9,
+        use_gpu=False,
+    )
+    assert "-ss" in cmd
+    ss_idx = cmd.index("-ss")
+    i_idx = cmd.index("-i")
+    assert ss_idx < i_idx
+    assert cmd[ss_idx + 1] == "120.0"
+    assert "-t" in cmd
+    t_idx = cmd.index("-t")
+    assert cmd[t_idx + 1] == "60.0"
+    assert cmd[-1] == "/output/preview.mpg"
+
+def test_bluray_transcode_command_with_seek_and_duration():
+    cmd = build_bluray_transcode_command(
+        input_file="/media/test.mkv",
+        output_m2ts="/output/preview.m2ts",
+        video_bitrate_kbps=25000,
+        seek_start_sec=300.5,
+        duration_sec=60.0,
+        use_gpu=False,
+    )
+    assert "-ss" in cmd
+    ss_idx = cmd.index("-ss")
+    i_idx = cmd.index("-i")
+    assert ss_idx < i_idx
+    assert cmd[ss_idx + 1] == "300.5"
+    assert "-t" in cmd
+    t_idx = cmd.index("-t")
+    assert cmd[t_idx + 1] == "60.0"
+    assert cmd[-1] == "/output/preview.m2ts"
+
