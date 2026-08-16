@@ -72,7 +72,7 @@ def build_dvd_transcode_command(
         sar_val, dar_val = ("64/45", "16/9") if is_16_9 else ("16/15", "4/3")
 
     if is_hdr:
-        vf_filter = f"scale={final_w}:{final_h}:in_color_matrix=bt2020nc:out_color_matrix=bt601,setsar={sar_val},setdar={dar_val},format=yuv420p"
+        vf_filter = f"scale={final_w}:{final_h}:in_color_matrix=bt2020nc:out_color_matrix=bt601,setsar={sar_val},setdar={dar_val},format=gbrpf32le,tonemap=tonemap=hable:desat=0.5,format=yuv420p"
     else:
         vf_filter = f"scale={final_w}:{final_h},setsar={sar_val},setdar={dar_val},format=yuv420p"
 
@@ -114,7 +114,7 @@ def build_bluray_transcode_command(
         audio_stream_idx: Zero-based stream index of audio in input file.
         audio_channels: Number of audio channels (e.g. 2 for stereo, 6 for 5.1).
         use_gpu: Enable NVENC hardware acceleration for encoding.
-        is_hdr: Enable color matrix adaptation from HDR to SDR.
+        is_hdr: Enable Hable filmic tone-mapping from HDR to SDR.
         seek_start_sec: Optional seek start timestamp in seconds for preview clipping.
         duration_sec: Optional duration in seconds for preview clipping.
 
@@ -143,7 +143,7 @@ def build_bluray_transcode_command(
     cmd.extend(["-g", "24", "-keyint_min", "1", "-bf", "3"])
 
     if is_hdr:
-        vf_filter = "scale=1920:1080:in_color_matrix=bt2020nc:out_color_matrix=bt709:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
+        vf_filter = "scale=1920:1080:in_color_matrix=bt2020nc:out_color_matrix=bt709:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=gbrpf32le,tonemap=tonemap=hable:desat=0.5,format=yuv420p"
     else:
         vf_filter = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
 
