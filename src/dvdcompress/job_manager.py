@@ -56,6 +56,7 @@ class Job(BaseModel):
     burner_device: Optional[str] = None
     burn_speed: int = 4
     use_gpu: bool = True
+    selected_subtitle_indices: Optional[List[int]] = None
 
     current_file_idx: int = 0
     total_files: int = 1
@@ -94,6 +95,7 @@ class JobManager:
         burner_device: Optional[str] = None,
         burn_speed: int = 4,
         use_gpu: bool = True,
+        selected_subtitle_indices: Optional[List[int]] = None,
     ) -> str:
         job_id = str(uuid.uuid4())[:8]
         clean_name = "".join([c if c.isalnum() else "_" for c in output_name.strip()]) or f"disc_{job_id}"
@@ -109,6 +111,7 @@ class JobManager:
             burner_device=burner_device,
             burn_speed=burn_speed,
             use_gpu=use_gpu,
+            selected_subtitle_indices=selected_subtitle_indices,
             total_files=len(input_files),
         )
         self.jobs[job_id] = job
@@ -429,7 +432,11 @@ class JobManager:
             all_sub_langs = []
             for t_idx, info in enumerate(media_infos):
                 title_subs = []
-                for s_idx, s in enumerate(info.subtitle_streams):
+                target_subs = info.subtitle_streams
+                if job.selected_subtitle_indices is not None:
+                    target_subs = [s for s in info.subtitle_streams if s.index in job.selected_subtitle_indices]
+
+                for s_idx, s in enumerate(target_subs):
                     lang = s.language or "eng"
                     if lang not in all_sub_langs:
                         all_sub_langs.append(lang)
