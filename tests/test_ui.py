@@ -140,4 +140,13 @@ def test_javascript_syntax_validity():
         assert proc.returncode == 0, f"JavaScript syntax error: {proc.stderr}"
 
 
+def test_subtitle_ui_elements_in_app_js():
+    res = client.get("/js/app.js")
+    assert res.status_code == 200
+    js = res.text
+    assert "sub-track-checkbox" in js
+    assert "selected_subtitle_indices" in js
+
+
+
 

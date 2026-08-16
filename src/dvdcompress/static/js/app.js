@@ -620,9 +620,12 @@
             
             <div class="stream-group-title" style="margin-top: 4px;">Subtitle Streams (${subCount})</div>
             ${subCount > 0 ? (item.subtitle_streams || []).map(s => `
-              <div class="stream-item">
-                <span class="stream-name">#${s.index}: ${s.codec_name.toUpperCase()} [${s.language || 'und'}]</span>
-                <span class="stream-meta">${s.title || 'Subtitle ' + s.index}</span>
+              <div class="stream-item" style="display: flex; align-items: center; justify-content: space-between;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; margin: 0;">
+                  <input type="checkbox" class="sub-track-checkbox" data-track-index="${s.index}" ${s._excluded ? '' : 'checked'} style="cursor: pointer;" />
+                  <span class="stream-name">#${s.index}: ${s.codec_name.toUpperCase()} [${(s.language || 'und').toUpperCase()}]</span>
+                </label>
+                <span class="stream-meta">${escapeHtml(s.title || 'Subtitle ' + s.index)}${s.is_forced ? ' • Forced' : ''}${s.is_default ? ' • Default' : ''}</span>
               </div>
             `).join('') : '<div style="color: var(--text-tertiary);">No subtitle tracks found.</div>'}
           </div>
@@ -637,6 +640,17 @@
         renderPlaylist();
       });
       itemCard.querySelector('.btn-item-remove')?.addEventListener('click', () => removePlaylistItem(idx));
+
+      // Subtitle track selection listeners
+      itemCard.querySelectorAll('.sub-track-checkbox').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          const trackIdx = parseInt(e.target.dataset.trackIndex, 10);
+          const subStream = (item.subtitle_streams || []).find(s => s.index === trackIdx);
+          if (subStream) {
+            subStream._excluded = !e.target.checked;
+          }
+        });
+      });
 
       container.appendChild(itemCard);
     });
@@ -901,6 +915,15 @@
       return;
     }
 
+    const selectedSubtitleIndices = [];
+    state.playlist.forEach(item => {
+      (item.subtitle_streams || []).forEach(s => {
+        if (!s._excluded) {
+          selectedSubtitleIndices.push(s.index);
+        }
+      });
+    });
+
     const payload = {
       input_files: state.playlist.map(item => item.path),
       disc_type: state.config.disc_type,
@@ -912,6 +935,7 @@
       burner_device: state.config.burner_device || null,
       burn_speed: state.config.burn_speed || 4,
       use_gpu: state.config.use_gpu,
+      selected_subtitle_indices: selectedSubtitleIndices,
     };
 
     const btnStart = document.getElementById('btn-start-project');
@@ -1069,6 +1093,13 @@
     if (!media) return;
 
     const baseName = state.config.output_name || 'DVD_PROJECT';
+    const selectedSubtitleIndices = [];
+    (media.subtitle_streams || []).forEach(s => {
+      if (!s._excluded) {
+        selectedSubtitleIndices.push(s.index);
+      }
+    });
+
     const payload = {
       input_file: media.path,
       preview_mode: state.preview.preview_mode,
@@ -1078,6 +1109,7 @@
       aspect_ratio: state.config.aspect_ratio,
       menu_mode: state.config.menu_mode,
       use_gpu: state.config.use_gpu,
+      selected_subtitle_indices: selectedSubtitleIndices,
     };
 
     closePreviewModal();
