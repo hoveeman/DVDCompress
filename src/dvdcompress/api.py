@@ -91,6 +91,19 @@ class BurnIsoRequest(BaseModel):
     is_bluray: bool = False
 
 
+class CreatePreviewRequest(BaseModel):
+    input_file: str
+    preview_mode: OutputMode = OutputMode.PREVIEW_VIDEO
+    disc_type: DiscType = DiscType.DVD5
+    output_name: str = "preview_sample"
+    tv_standard: TVStandard = TVStandard.AUTO
+    aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9
+    menu_mode: MenuMode = MenuMode.AUTOPLAY
+    use_gpu: bool = True
+    custom_bitrate_kbps: Optional[int] = None
+
+
+
 async def _run_burn_iso_pipeline(
     job_id: str, iso_path: str, device_path: str, speed: int, is_bluray: bool
 ):

@@ -30,6 +30,9 @@ class OutputMode(str, Enum):
     ISO_ONLY = "iso_only"
     BURN_DIRECT = "burn_direct"
     AUTHOR_AND_BURN = "author_and_burn"
+    PREVIEW_VIDEO = "preview_video"
+    PREVIEW_ISO = "preview_iso"
+
 
 class AudioStreamInfo(BaseModel):
     index: int

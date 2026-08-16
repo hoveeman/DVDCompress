@@ -212,3 +212,22 @@ def test_config_settings(monkeypatch):
     custom_settings = Settings()
     assert str(custom_settings.media_dir) == "/custom/media"
     assert custom_settings.port == 9090
+
+
+def test_preview_output_modes_and_request_model():
+    from dvdcompress.models import OutputMode, DiscType, TVStandard, AspectRatio
+    from dvdcompress.api import CreatePreviewRequest
+
+    assert OutputMode.PREVIEW_VIDEO == "preview_video"
+    assert OutputMode.PREVIEW_ISO == "preview_iso"
+
+    req = CreatePreviewRequest(
+        input_file="/media/sample.mkv",
+        preview_mode=OutputMode.PREVIEW_VIDEO,
+        disc_type=DiscType.DVD5,
+        output_name="test_preview",
+    )
+    assert req.input_file == "/media/sample.mkv"
+    assert req.preview_mode == OutputMode.PREVIEW_VIDEO
+    assert req.disc_type == DiscType.DVD5
+
