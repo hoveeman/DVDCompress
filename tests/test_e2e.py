@@ -1298,3 +1298,156 @@ def test_e2e_full_rest_api_user_journey(tmp_path):
     assert single_job["job_id"] == job_id
     assert single_job["output_name"] == "Full_User_Journey_Movie"
     assert single_job["progress_percent"] == 100.0
+
+
+@pytest.mark.asyncio
+async def test_e2e_dvd_preview_video_pipeline(tmp_path, monkeypatch):
+    """Test generating a 1-minute DVD sample .mpg video."""
+    manager = JobManager()
+    manager.jobs.clear()
+    media_file = str(tmp_path / "movie.mkv")
+    with open(media_file, "w") as f:
+        f.write("content")
+
+    output_dir = str(tmp_path / "output")
+    scratch_dir = str(tmp_path / "scratch")
+    os.makedirs(output_dir, exist_ok=True)
+
+    async def fake_probe(path):
+        return MediaInfo(
+            path=path,
+            filename="movie.mkv",
+            duration_sec=5400.0,  # 90 minutes
+            width=1920,
+            height=1080,
+            aspect_ratio="16:9",
+            frame_rate=24.0,
+            video_codec="h264",
+            size_bytes=4000000000,
+        )
+
+    monkeypatch.setattr("dvdcompress.job_manager.probe_media_file", fake_probe)
+
+    executed_commands = []
+
+    class FakeProc:
+        returncode = 0
+        async def wait(self): return 0
+        @property
+        def stderr(self):
+            class Stream:
+                async def read(self, n): return b""
+            return Stream()
+        def send_signal(self, sig): pass
+        def kill(self): pass
+
+    async def fake_exec(*cmd, **kwargs):
+        executed_commands.append(list(cmd))
+        out_target = cmd[-1]
+        with open(out_target, "w") as f:
+            f.write("SAMPLE_MPG_BYTES")
+        return FakeProc()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+
+    job_id = manager.create_job(
+        input_files=[media_file],
+        disc_type=DiscType.DVD5,
+        output_mode=OutputMode.PREVIEW_VIDEO,
+        output_name="my_movie",
+        tv_standard=TVStandard.NTSC,
+        aspect_ratio=AspectRatio.RATIO_16_9,
+        use_gpu=False,
+    )
+
+    await manager.start_job(job_id, scratch_dir=scratch_dir, output_dir=output_dir)
+    task = manager.active_tasks[job_id]
+    await task
+
+    job = manager.get_job(job_id)
+    assert job.stage == JobStage.COMPLETED
+    expected_out = os.path.join(output_dir, "preview_my_movie.mpg")
+    assert job.output_iso_path == expected_out
+    assert os.path.exists(expected_out)
+
+    # Check that seek was 5400/2 - 30 = 2670.0 and duration was 60.0
+    cmd = executed_commands[0]
+    assert "-ss" in cmd
+    assert cmd[cmd.index("-ss") + 1] == "2670.0"
+    assert "-t" in cmd
+    assert cmd[cmd.index("-t") + 1] == "60.0"
+
+
+@pytest.mark.asyncio
+async def test_e2e_bluray_preview_iso_pipeline(tmp_path, monkeypatch):
+    """Test generating a 1-minute Blu-ray sample .iso image."""
+    manager = JobManager()
+    manager.jobs.clear()
+    media_file = str(tmp_path / "feature.mkv")
+    with open(media_file, "w") as f:
+        f.write("content")
+
+    output_dir = str(tmp_path / "output")
+    scratch_dir = str(tmp_path / "scratch")
+    os.makedirs(output_dir, exist_ok=True)
+
+    async def fake_probe(path):
+        return MediaInfo(
+            path=path,
+            filename="feature.mkv",
+            duration_sec=7200.0,
+            width=3840,
+            height=2160,
+            aspect_ratio="16:9",
+            frame_rate=23.976,
+            video_codec="hevc",
+            size_bytes=25000000000,
+        )
+
+    monkeypatch.setattr("dvdcompress.job_manager.probe_media_file", fake_probe)
+
+    executed_commands = []
+
+    class FakeProc:
+        returncode = 0
+        async def wait(self): return 0
+        @property
+        def stderr(self):
+            class Stream:
+                async def read(self, n): return b""
+            return Stream()
+        def send_signal(self, sig): pass
+        def kill(self): pass
+
+    async def fake_exec(*cmd, **kwargs):
+        executed_commands.append(list(cmd))
+        if "-o" in cmd:
+            iso_target = cmd[cmd.index("-o") + 1]
+            if iso_target.endswith(".iso"):
+                with open(iso_target, "w") as f:
+                    f.write("SAMPLE_ISO_BYTES")
+        elif cmd[-1].endswith(".m2ts"):
+            with open(cmd[-1], "w") as f:
+                f.write("SAMPLE_M2TS_BYTES")
+        return FakeProc()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+
+    job_id = manager.create_job(
+        input_files=[media_file],
+        disc_type=DiscType.BD25,
+        output_mode=OutputMode.PREVIEW_ISO,
+        output_name="feature_film",
+        use_gpu=False,
+    )
+
+    await manager.start_job(job_id, scratch_dir=scratch_dir, output_dir=output_dir)
+    task = manager.active_tasks[job_id]
+    await task
+
+    job = manager.get_job(job_id)
+    assert job.stage == JobStage.COMPLETED
+    expected_out = os.path.join(output_dir, "preview_feature_film.iso")
+    assert job.output_iso_path == expected_out
+    assert os.path.exists(expected_out)
+
