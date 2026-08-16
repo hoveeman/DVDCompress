@@ -43,4 +43,10 @@ ENV/
 .idea/
 .superpowers/
 
+# AI Context & Knowledge Bases (Local only)
+gemini.md
+claude.md
+GEMINI.md
+CLAUDE.md
+
 
