@@ -1646,5 +1646,91 @@ async def test_e2e_hdr_hable_tonemapping_pipeline(tmp_path, monkeypatch):
     assert "format=yuv420p" in vf_str
 
 
+@pytest.mark.asyncio
+async def test_e2e_4k_uhd_passthrough_pipeline(tmp_path, monkeypatch):
+    """End-to-end test: 4K UHD HDR Remux on BD-100 with passthrough=True keeps untouched HEVC."""
+    manager = JobManager()
+    manager.jobs.clear()
+    media_file = str(tmp_path / "4k_remux.mkv")
+    with open(media_file, "w") as f:
+        f.write("content")
+
+    output_dir = str(tmp_path / "output")
+    scratch_dir = str(tmp_path / "scratch")
+    os.makedirs(output_dir, exist_ok=True)
+
+    fake_uhd_info = MediaInfo(
+        path=media_file,
+        filename="4k_remux.mkv",
+        duration_sec=7200.0,
+        width=3840,
+        height=2160,
+        aspect_ratio="16:9",
+        frame_rate=23.976,
+        video_codec="hevc",
+        pix_fmt="yuv420p10le",
+        color_transfer="smpte2084",
+        color_primaries="bt2020",
+        is_hdr=True,
+        audio_streams=[AudioStreamInfo(index=1, codec_name="dts", channels=6)],
+        subtitle_streams=[],
+        size_bytes=65000000000,
+    )
+
+    monkeypatch.setattr("dvdcompress.job_manager.probe_media_file", AsyncMock(return_value=fake_uhd_info))
+
+    executed_cmds = []
+    captured_meta = {}
+
+    class FakeProc:
+        returncode = 0
+        async def wait(self): return 0
+        @property
+        def stderr(self):
+            class Stream:
+                async def read(self, n): return b""
+            return Stream()
+        def send_signal(self, sig): pass
+        def kill(self): pass
+
+    async def fake_exec(*cmd, **kwargs):
+        executed_cmds.append(list(cmd))
+        if cmd[0] == "tsMuxeR" and len(cmd) > 1 and os.path.exists(cmd[1]):
+            with open(cmd[1], "r") as f:
+                captured_meta["tsmuxer.meta"] = f.read()
+        if "-o" in cmd:
+            iso_target = cmd[cmd.index("-o") + 1]
+            if iso_target.endswith(".iso"):
+                with open(iso_target, "w") as f:
+                    f.write("UHD_ISO_BYTES")
+        return FakeProc()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+
+    job_id = manager.create_job(
+        input_files=[media_file],
+        disc_type=DiscType.BD100,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="uhd_master",
+        passthrough=True,
+    )
+    await manager.start_job(job_id, scratch_dir=scratch_dir, output_dir=output_dir)
+    await manager.active_tasks[job_id]
+
+    job = manager.get_job(job_id)
+    assert job.stage == JobStage.COMPLETED
+    assert any("Direct Stream Passthrough active" in log for log in job.logs)
+
+    # Verify no ffmpeg transcode
+    assert not any(c[0] == "ffmpeg" and "-b:v" in c for c in executed_cmds)
+
+    # Verify tsMuxeR meta contains V_MPEGH/ISO/HEVC
+    assert "tsmuxer.meta" in captured_meta
+    meta_text = captured_meta["tsmuxer.meta"]
+    assert "V_MPEGH/ISO/HEVC" in meta_text
+    assert f'"{media_file}"' in meta_text
+
+
+
 
 
