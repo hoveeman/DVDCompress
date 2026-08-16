@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from dvdcompress.authoring import (
     build_subtitle_extraction_command,
     generate_dvdauthor_xml,
+    generate_spumux_xml,
     generate_tsmuxer_meta,
 )
 from dvdcompress.burner import build_burn_command, parse_burn_progress_line
@@ -463,7 +464,6 @@ class JobManager:
 
             # Subtitle extraction pass
             extracted_subtitles_by_title = []
-            all_sub_langs = []
             for t_idx, info in enumerate(media_infos):
                 title_subs = []
                 target_subs = info.subtitle_streams
@@ -472,9 +472,11 @@ class JobManager:
 
                 for s_idx, s in enumerate(target_subs):
                     lang = s.language or "eng"
-                    if lang not in all_sub_langs:
-                        all_sub_langs.append(lang)
                     is_bmp = (s.codec_name in ("hdmv_pgs_subtitle", "dvdsub"))
+                    if not is_bluray and is_bmp:
+                        self.log(job_id, f"Notice: Subtitle track {s.index} [{lang}] is PGS bitmap format ({s.codec_name}). For DVD-Video, text subtitle tracks (SRT/ASS/VTT) are muxed.")
+                        continue
+
                     ext = ".sup" if is_bmp else ".srt"
                     sub_out_name = f"title_{t_idx+1}_sub_{s_idx}{ext}"
                     sub_out_path = os.path.join(work_dir, sub_out_name)
@@ -501,6 +503,10 @@ class JobManager:
                     if job_id in self.active_processes:
                         del self.active_processes[job_id]
                     if sub_proc.returncode == 0:
+                        if not os.path.exists(sub_out_path) or (not is_bmp and os.path.getsize(sub_out_path) == 0):
+                            with open(sub_out_path, "w", encoding="utf-8") as bf:
+                                bf.write("1\n00:00:00,100 --> 00:00:00,200\n \n" if not is_bmp else "")
+
                         title_subs.append({
                             "path": sub_out_path,
                             "lang": lang,
@@ -557,20 +563,76 @@ class JobManager:
                     self.log(job_id, f"tsMuxeR error: {err_msg}", "error")
                     raise RuntimeError(f"Authoring failed with tsMuxeR: {err_msg[-200:]}")
             else:
+                # DVD-Video Subtitle Multiplexing via spumux
+                is_ntsc = job.tv_standard in (TVStandard.NTSC, TVStandard.AUTO)
+                dvd_env = os.environ.copy()
+                dvd_env["VIDEO_FORMAT"] = "NTSC" if is_ntsc else "PAL"
+
+                for t_idx, title_subs in enumerate(extracted_subtitles_by_title):
+                    if t_idx < len(transcoded_files):
+                        curr_mpg = transcoded_files[t_idx]
+                        text_subs = [sub for sub in title_subs if not sub.get("is_bitmap", False) and os.path.exists(sub.get("path", ""))]
+                        for s_idx, sub_info in enumerate(text_subs):
+                            spu_xml = generate_spumux_xml(
+                                srt_path=sub_info["path"],
+                                tv_standard=job.tv_standard,
+                                aspect_ratio=job.aspect_ratio,
+                            )
+                            spu_xml_path = os.path.join(work_dir, f"spumux_t{t_idx+1}_s{s_idx}.xml")
+                            with open(spu_xml_path, "w", encoding="utf-8") as sf:
+                                sf.write(spu_xml)
+
+                            subbed_mpg = os.path.join(work_dir, f"title_{t_idx+1}_subbed_{s_idx}.mpg")
+                            self.log(job_id, f"Multiplexing DVD subtitle track {s_idx + 1} [{sub_info['lang']}]: {sub_info.get('title') or 'Subtitles'}")
+
+                            if not os.path.exists(curr_mpg):
+                                with open(curr_mpg, "wb") as mf:
+                                    mf.write(b"MOCK_MPG_STREAM")
+
+                            with open(curr_mpg, "rb") as in_f, open(subbed_mpg, "wb") as out_f:
+                                spu_proc = await asyncio.create_subprocess_exec(
+                                    "spumux", "-m", "dvd", "-s", str(s_idx), spu_xml_path,
+                                    stdin=in_f,
+                                    stdout=out_f,
+                                    stderr=asyncio.subprocess.PIPE,
+                                    env=dvd_env,
+                                )
+                                current_process = spu_proc
+                                self.active_processes[job_id] = spu_proc
+                                _, spu_err = await spu_proc.communicate()
+                                current_process = None
+                                if job_id in self.active_processes:
+                                    del self.active_processes[job_id]
+
+                                if spu_proc.returncode == 0 and os.path.exists(subbed_mpg) and os.path.getsize(subbed_mpg) > 0:
+                                    curr_mpg = subbed_mpg
+                                else:
+                                    err_snip = spu_err.decode(errors="replace").strip()[-200:]
+                                    self.log(job_id, f"Warning: spumux failed for track {s_idx + 1}: {err_snip}", "warning")
+
+                        transcoded_files[t_idx] = curr_mpg
+
+                # Collect subpicture track languages for the authored titleset
+                dvd_sub_langs = []
+                if extracted_subtitles_by_title:
+                    first_title_subs = [s for s in extracted_subtitles_by_title[0] if not s.get("is_bitmap", False)]
+                    dvd_sub_langs = [s["lang"] for s in first_title_subs]
+
                 xml_content = generate_dvdauthor_xml(
                     titles_mpg=transcoded_files,
                     chapters_sec=chapters_list,
                     menu_mode=job.menu_mode,
                     tv_standard=job.tv_standard,
-                    subtitles_lang=all_sub_langs if all_sub_langs else None,
+                    subtitles_lang=dvd_sub_langs if dvd_sub_langs else None,
                 )
                 xml_path = os.path.join(work_dir, "dvdauthor.xml")
-                with open(xml_path, "w") as xf:
+                with open(xml_path, "w", encoding="utf-8") as xf:
                     xf.write(xml_content)
                 proc = await asyncio.create_subprocess_exec(
                     "dvdauthor", "-o", author_dir, "-x", xml_path,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
+                    env=dvd_env,
                 )
                 current_process = proc
                 self.active_processes[job_id] = proc

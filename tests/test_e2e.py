@@ -173,6 +173,7 @@ class SmartSubprocessMock:
         **kwargs: Any,
     ):
         self.cmd = [str(c) for c in cmd]
+        self.kwargs = kwargs
         self.fail_on_cmd = fail_on_cmd
         self.returncode = exit_code
         self.killed = False
@@ -279,6 +280,15 @@ class SmartSubprocessMock:
                     b"",
                 ]
             )
+
+        elif "spumux" in cmd_name:
+            out_target = self.kwargs.get("stdout")
+            if out_target and hasattr(out_target, "write"):
+                out_target.write(b"MOCK_SPUMUX_SUBPICTURE_STREAM_BYTES")
+            self.stderr.read = AsyncMock(return_value=b"")
+            self.stderr.readline = AsyncMock(return_value=b"")
+            self.stdout.read = AsyncMock(return_value=b"")
+            self.stdout.readline = AsyncMock(return_value=b"")
 
         else:
             self.stderr.readline = AsyncMock(return_value=b"")
@@ -1513,7 +1523,14 @@ async def test_e2e_dvd_and_bluray_multi_subtitle_authoring(tmp_path, monkeypatch
 
     async def fake_exec(*cmd, **kwargs):
         executed_cmds.append(list(cmd))
-        if cmd[0] == "tsMuxeR" and len(cmd) > 1 and os.path.exists(cmd[1]):
+        if cmd[0] == "ffmpeg":
+            out_target = cmd[-1]
+            os.makedirs(os.path.dirname(os.path.abspath(out_target)), exist_ok=True)
+            with open(out_target, "wb") as f:
+                f.write(b"MOCK_STREAM_BYTES")
+        elif cmd[0] == "spumux" and kwargs.get("stdout") and hasattr(kwargs["stdout"], "write"):
+            kwargs["stdout"].write(b"MOCK_SPUMUX_BYTES")
+        elif cmd[0] == "tsMuxeR" and len(cmd) > 1 and os.path.exists(cmd[1]):
             with open(cmd[1], "r") as f:
                 captured_meta["tsmuxer.meta"] = f.read()
         elif cmd[0] == "dvdauthor" and "-x" in cmd:
@@ -1565,6 +1582,10 @@ async def test_e2e_dvd_and_bluray_multi_subtitle_authoring(tmp_path, monkeypatch
 
     dvd_job = manager.get_job(dvd_job_id)
     assert dvd_job.stage == JobStage.COMPLETED
+
+    # Verify spumux was executed to multiplex the subtitle streams
+    spumux_calls = [c for c in executed_cmds if c[0] == "spumux"]
+    assert len(spumux_calls) == 2  # 2 selected text subtitle tracks (eng, fre)
 
     # Verify dvdauthor XML contains subpicture tags for selected languages
     assert "dvdauthor.xml" in captured_xml

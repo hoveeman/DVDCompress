@@ -20,6 +20,8 @@ from dvdcompress.transcoder import (
 from dvdcompress.authoring import (
     generate_dvdauthor_xml,
     generate_tsmuxer_meta,
+    generate_spumux_xml,
+    get_spumux_font_path,
     format_chapter_time,
 )
 from dvdcompress.iso import (
@@ -53,6 +55,8 @@ __all__ = [
     "parse_ffmpeg_progress_line",
     "generate_dvdauthor_xml",
     "generate_tsmuxer_meta",
+    "generate_spumux_xml",
+    "get_spumux_font_path",
     "format_chapter_time",
     "build_genisoimage_command",
     "build_xorriso_bd_command",

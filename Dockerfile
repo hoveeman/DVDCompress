@@ -18,6 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     lsscsi \
     sg3-utils \
     pciutils \
+    fonts-dejavu-core \
+    fonts-liberation \
     curl \
     ca-certificates \
     unzip \

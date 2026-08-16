@@ -96,7 +96,7 @@ def test_build_subtitle_extraction_command():
         output_sub_path="/tmp/sub.srt",
         is_bitmap=False,
     )
-    assert cmd_text == ["ffmpeg", "-y", "-i", "/media/movie.mkv", "-map", "0:2", "/tmp/sub.srt"]
+    assert cmd_text == ["ffmpeg", "-y", "-i", "/media/movie.mkv", "-map", "0:2", "-c:s", "srt", "/tmp/sub.srt"]
 
     # Bitmap PGS subtitle extraction (to .sup) with seek & duration
     cmd_bitmap = build_subtitle_extraction_command(
@@ -108,6 +108,33 @@ def test_build_subtitle_extraction_command():
         duration_sec=60.0,
     )
     assert cmd_bitmap == ["ffmpeg", "-y", "-ss", "120.0", "-i", "/media/movie.mkv", "-t", "60.0", "-map", "0:3", "-c:s", "copy", "/tmp/sub.sup"]
+
+
+def test_generate_spumux_xml():
+    from dvdcompress.authoring import generate_spumux_xml, get_spumux_font_path
+    from dvdcompress.models import AspectRatio, TVStandard
+
+    font = get_spumux_font_path()
+    assert font is not None
+
+    xml_ntsc = generate_spumux_xml(
+        srt_path="/tmp/sub.srt",
+        tv_standard=TVStandard.NTSC,
+        aspect_ratio=AspectRatio.RATIO_16_9,
+        font_path="/usr/share/fonts/DejaVuSans.ttf",
+    )
+    assert '<subpictures format="NTSC">' in xml_ntsc
+    assert '<textsub filename="/tmp/sub.srt"' in xml_ntsc
+    assert 'font="/usr/share/fonts/DejaVuSans.ttf"' in xml_ntsc
+    assert 'aspect="16:9"' in xml_ntsc
+
+    xml_pal = generate_spumux_xml(
+        srt_path="/tmp/sub_pal.srt",
+        tv_standard=TVStandard.PAL,
+        aspect_ratio=AspectRatio.RATIO_4_3,
+    )
+    assert '<subpictures format="PAL">' in xml_pal
+    assert 'aspect="4:3"' in xml_pal
 
 
 def test_generate_tsmuxer_meta_with_subtitles():
@@ -127,10 +154,11 @@ def test_generate_dvdauthor_xml_with_subpictures():
     xml = generate_dvdauthor_xml(
         titles_mpg=["/tmp/title1.mpg"],
         chapters_sec=[[0.0, 300.0]],
-        subtitles_lang=["eng", "spa"],
+        subtitles_lang=["eng", "eng", "spa"],
     )
-    assert '<subpicture lang="en" />' in xml
-    assert '<subpicture lang="es" />' in xml
+    # Both English tracks and Spanish track should be declared
+    assert xml.count('<subpicture lang="en" />') == 2
+    assert xml.count('<subpicture lang="es" />') == 1
 
 
 def test_generate_tsmuxer_meta_hevc_uhd():

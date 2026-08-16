@@ -1,7 +1,6 @@
-"""Disc authoring specification and metadata generators for dvdauthor and tsMuxeR."""
-
+import os
 from typing import Any, Dict, List, Optional
-from dvdcompress.models import MenuMode, TVStandard
+from dvdcompress.models import AspectRatio, MenuMode, TVStandard
 
 
 def format_chapter_time(seconds: float) -> str:
@@ -10,6 +9,55 @@ def format_chapter_time(seconds: float) -> str:
     m = int((seconds % 3600) // 60)
     s = seconds % 60
     return f"{h:02d}:{m:02d}:{s:06.3f}"
+
+
+def get_spumux_font_path() -> str:
+    """Locate an available TrueType font file for spumux rendering across Linux and macOS."""
+    candidate_fonts = [
+        # Linux / Container paths
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+        # macOS paths
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/System/Library/Fonts/Geneva.ttf",
+        "/Library/Fonts/Arial Unicode.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+    ]
+    for font_path in candidate_fonts:
+        if os.path.exists(font_path):
+            return font_path
+    return "sans-serif"
+
+
+def generate_spumux_xml(
+    srt_path: str,
+    tv_standard: TVStandard = TVStandard.NTSC,
+    aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9,
+    font_path: Optional[str] = None,
+) -> str:
+    """Generate spumux XML configuration to multiplex a subtitle track into DVD MPEG-2."""
+    fmt = "NTSC" if tv_standard in (TVStandard.NTSC, TVStandard.AUTO) else "PAL"
+    aspect_val = "16:9" if aspect_ratio == AspectRatio.RATIO_16_9 else "4:3"
+    resolved_font = font_path or get_spumux_font_path()
+
+    return f"""<subpictures format="{fmt}">
+  <stream>
+    <textsub filename="{srt_path}"
+             characterset="UTF-8"
+             fontsize="24.0"
+             font="{resolved_font}"
+             aspect="{aspect_val}"
+             horizontal-alignment="center"
+             vertical-alignment="bottom"
+             bottom-margin="36"
+             outline-thickness="2.0"
+             outline-color="#000000"
+             fill-color="#FFFFFF" />
+  </stream>
+</subpictures>
+"""
 
 
 def build_subtitle_extraction_command(
@@ -30,6 +78,8 @@ def build_subtitle_extraction_command(
     cmd.extend(["-map", f"0:{stream_index}"])
     if is_bitmap:
         cmd.extend(["-c:s", "copy"])
+    else:
+        cmd.extend(["-c:s", "srt"])
     cmd.append(output_sub_path)
     return cmd
 

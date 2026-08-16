@@ -679,7 +679,7 @@ async def test_job_pipeline_subtitle_extraction_and_authoring(tmp_path, monkeypa
     # Verify extraction commands were run for both subtitles
     sub_cmds = [c for c in executed_cmds if "-map" in c and any(c[-1].endswith(ext) for ext in (".srt", ".sup"))]
     assert len(sub_cmds) == 2
-    assert sub_cmds[0] == ["ffmpeg", "-y", "-i", media_file, "-map", "0:2", os.path.join(scratch_dir, job_id, "title_1_sub_0.srt")]
+    assert sub_cmds[0] == ["ffmpeg", "-y", "-i", media_file, "-map", "0:2", "-c:s", "srt", os.path.join(scratch_dir, job_id, "title_1_sub_0.srt")]
     assert sub_cmds[1] == ["ffmpeg", "-y", "-i", media_file, "-map", "0:3", "-c:s", "copy", os.path.join(scratch_dir, job_id, "title_1_sub_1.sup")]
 
 
