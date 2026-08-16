@@ -207,3 +207,47 @@ def test_parse_ffprobe_subtitle_disposition():
     assert media_info.subtitle_streams[1].is_default is True
 
 
+def test_parse_ffprobe_hdr_detection():
+    # 1. HDR10 ST2084 / BT.2020 10-bit
+    hdr_data = {
+        "streams": [
+            {
+                "codec_type": "video",
+                "codec_name": "hevc",
+                "width": 3840,
+                "height": 2160,
+                "pix_fmt": "yuv420p10le",
+                "color_primaries": "bt2020",
+                "color_transfer": "smpte2084",
+                "color_space": "bt2020nc",
+            }
+        ],
+        "format": {"duration": "100.0", "size": "1000"},
+        "chapters": [],
+    }
+    info_hdr = parse_ffprobe_output("/media/hdr_movie.mkv", hdr_data)
+    assert info_hdr.is_hdr is True
+    assert info_hdr.pix_fmt == "yuv420p10le"
+    assert info_hdr.color_transfer == "smpte2084"
+
+    # 2. Standard 8-bit SDR
+    sdr_data = {
+        "streams": [
+            {
+                "codec_type": "video",
+                "codec_name": "h264",
+                "width": 1920,
+                "height": 1080,
+                "pix_fmt": "yuv420p",
+                "color_primaries": "bt709",
+                "color_transfer": "bt709",
+            }
+        ],
+        "format": {"duration": "100.0", "size": "1000"},
+        "chapters": [],
+    }
+    info_sdr = parse_ffprobe_output("/media/sdr_movie.mp4", sdr_data)
+    assert info_sdr.is_hdr is False
+
+
+

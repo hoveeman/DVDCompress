@@ -60,6 +60,11 @@ class MediaInfo(BaseModel):
     aspect_ratio: str
     frame_rate: float
     video_codec: str
+    pix_fmt: Optional[str] = None
+    color_space: Optional[str] = None
+    color_transfer: Optional[str] = None
+    color_primaries: Optional[str] = None
+    is_hdr: bool = False
     audio_streams: List[AudioStreamInfo] = Field(default_factory=list)
     subtitle_streams: List[SubtitleStreamInfo] = Field(default_factory=list)
     chapters_count: int = 0

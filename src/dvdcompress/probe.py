@@ -38,6 +38,11 @@ def parse_ffprobe_output(file_path: str, data: Dict[str, Any]) -> MediaInfo:
     size_bytes = int(format_info.get("size", 0) or 0)
 
     video_codec = "unknown"
+    pix_fmt = None
+    color_space = None
+    color_transfer = None
+    color_primaries = None
+    is_hdr = False
     width, height = 720, 480
     dar = "16:9"
     frame_rate = 29.97
@@ -49,6 +54,18 @@ def parse_ffprobe_output(file_path: str, data: Dict[str, Any]) -> MediaInfo:
         c_type = s.get("codec_type")
         if c_type == "video" and video_codec == "unknown":
             video_codec = s.get("codec_name", "unknown")
+            pix_fmt = s.get("pix_fmt")
+            color_space = s.get("color_space")
+            color_transfer = s.get("color_transfer") or s.get("color_trc")
+            color_primaries = s.get("color_primaries")
+
+            if color_transfer in ("smpte2084", "arib-std-b67", "smpte428"):
+                is_hdr = True
+            elif color_primaries == "bt2020":
+                is_hdr = True
+            elif pix_fmt in ("yuv420p10le", "p010le", "yuv422p10le", "yuv444p10le", "yuv420p12le"):
+                is_hdr = True
+
             width = int(s.get("width", 720) or 720)
             height = int(s.get("height", 480) or 480)
             dar = s.get("display_aspect_ratio")
@@ -117,6 +134,11 @@ def parse_ffprobe_output(file_path: str, data: Dict[str, Any]) -> MediaInfo:
         aspect_ratio=dar,
         frame_rate=frame_rate,
         video_codec=video_codec,
+        pix_fmt=pix_fmt,
+        color_space=color_space,
+        color_transfer=color_transfer,
+        color_primaries=color_primaries,
+        is_hdr=is_hdr,
         audio_streams=audio_streams,
         subtitle_streams=subtitle_streams,
         chapters_count=len(chapters),
