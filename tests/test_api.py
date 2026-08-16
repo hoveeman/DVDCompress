@@ -482,3 +482,27 @@ def test_api_preview_endpoint_validation_and_launch(tmp_path, monkeypatch):
     assert data["preview_mode"] == "preview_video"
     assert "preview_sample_prev.mpg" in data["output_path"]
 
+
+def test_api_jobs_with_selected_subtitles(tmp_path, monkeypatch):
+    test_media = tmp_path / "sample_subs.mp4"
+    test_media.write_bytes(b"dummy")
+
+    async def fake_start(job_id, scratch_dir, output_dir):
+        pass
+
+    monkeypatch.setattr(job_manager, "start_job", fake_start)
+
+    resp = client.post("/api/jobs", json={
+        "input_files": [str(test_media)],
+        "disc_type": "bd25",
+        "output_mode": "iso_only",
+        "output_name": "subs_disc",
+        "selected_subtitle_indices": [2, 3],
+    })
+    assert resp.status_code == 200
+    job_id = resp.json()["job_id"]
+    job = job_manager.get_job(job_id)
+    assert job is not None
+    assert job.selected_subtitle_indices == [2, 3]
+
+

@@ -82,6 +82,7 @@ class CreateJobRequest(BaseModel):
     burner_device: Optional[str] = None
     burn_speed: int = 4
     use_gpu: bool = True
+    selected_subtitle_indices: Optional[List[int]] = None
 
 
 class BurnIsoRequest(BaseModel):
@@ -101,6 +102,7 @@ class CreatePreviewRequest(BaseModel):
     menu_mode: MenuMode = MenuMode.AUTOPLAY
     use_gpu: bool = True
     custom_bitrate_kbps: Optional[int] = None
+    selected_subtitle_indices: Optional[List[int]] = None
 
 
 
@@ -302,6 +304,7 @@ async def create_job(req: CreateJobRequest):
         burner_device=req.burner_device,
         burn_speed=req.burn_speed,
         use_gpu=req.use_gpu,
+        selected_subtitle_indices=req.selected_subtitle_indices,
     )
     await job_manager.start_job(
         job_id, scratch_dir=get_scratch_dir(), output_dir=get_output_dir()
@@ -359,6 +362,7 @@ async def create_preview(req: CreatePreviewRequest):
         aspect_ratio=req.aspect_ratio,
         menu_mode=req.menu_mode,
         use_gpu=req.use_gpu,
+        selected_subtitle_indices=req.selected_subtitle_indices,
     )
 
     await job_manager.start_job(
