@@ -10,7 +10,11 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from dvdcompress.authoring import generate_dvdauthor_xml, generate_tsmuxer_meta
+from dvdcompress.authoring import (
+    build_subtitle_extraction_command,
+    generate_dvdauthor_xml,
+    generate_tsmuxer_meta,
+)
 from dvdcompress.burner import build_burn_command, parse_burn_progress_line
 from dvdcompress.calculator import calculate_bitrate_budget
 from dvdcompress.iso import build_genisoimage_command, build_xorriso_bd_command
@@ -414,11 +418,53 @@ class JobManager:
             # 3. Authoring
             job.stage = JobStage.AUTHORING
             job.progress_percent = 70.0
-            self.log(job_id, "Authoring disc structure...")
+            self.log(job_id, "Authoring disc structure and subtitle tracks...")
             await self.broadcast(job_id)
 
             author_dir = os.path.join(work_dir, "author")
             os.makedirs(author_dir, exist_ok=True)
+
+            # Subtitle extraction pass
+            extracted_subtitles_by_title = []
+            all_sub_langs = []
+            for t_idx, info in enumerate(media_infos):
+                title_subs = []
+                for s_idx, s in enumerate(info.subtitle_streams):
+                    lang = s.language or "eng"
+                    if lang not in all_sub_langs:
+                        all_sub_langs.append(lang)
+                    is_bmp = (s.codec_name in ("hdmv_pgs_subtitle", "dvdsub"))
+                    ext = ".sup" if is_bmp else ".srt"
+                    sub_out_name = f"title_{t_idx+1}_sub_{s_idx}{ext}"
+                    sub_out_path = os.path.join(work_dir, sub_out_name)
+                    extract_cmd = build_subtitle_extraction_command(
+                        input_file=info.path,
+                        stream_index=s.index,
+                        output_sub_path=sub_out_path,
+                        is_bitmap=is_bmp,
+                    )
+                    self.log(job_id, f"Extracting subtitle track [{lang}]: {s.title or s.codec_name}")
+                    sub_proc = await asyncio.create_subprocess_exec(
+                        *extract_cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    current_process = sub_proc
+                    self.active_processes[job_id] = sub_proc
+                    await sub_proc.wait()
+                    current_process = None
+                    if job_id in self.active_processes:
+                        del self.active_processes[job_id]
+                    if sub_proc.returncode == 0:
+                        title_subs.append({
+                            "path": sub_out_path,
+                            "lang": lang,
+                            "is_bitmap": is_bmp,
+                            "title": s.title,
+                        })
+                    else:
+                        self.log(job_id, f"Warning: could not extract subtitle track {s.index} ({lang})", "warning")
+                extracted_subtitles_by_title.append(title_subs)
 
             # Build chapter list for each title
             chapters_list = []
@@ -438,7 +484,12 @@ class JobManager:
 
             if is_bluray:
                 first_chaps = chapters_list[0] if len(chapters_list) > 0 else None
-                meta_content = generate_tsmuxer_meta(transcoded_files, chapters_sec=first_chaps)
+                first_subs = extracted_subtitles_by_title[0] if extracted_subtitles_by_title else None
+                meta_content = generate_tsmuxer_meta(
+                    transcoded_files,
+                    chapters_sec=first_chaps,
+                    subtitle_files=first_subs,
+                )
                 meta_path = os.path.join(work_dir, "tsmuxer.meta")
                 with open(meta_path, "w") as mf:
                     mf.write(meta_content)
@@ -452,19 +503,12 @@ class JobManager:
                 if proc.returncode != 0:
                     raise RuntimeError("Authoring failed with tsMuxeR")
             else:
-                sub_langs = []
-                for info in media_infos:
-                    for s in info.subtitle_streams:
-                        lang = s.language or "en"
-                        if lang not in sub_langs:
-                            sub_langs.append(lang)
-
                 xml_content = generate_dvdauthor_xml(
                     titles_mpg=transcoded_files,
                     chapters_sec=chapters_list,
                     menu_mode=job.menu_mode,
                     tv_standard=job.tv_standard,
-                    subtitles_lang=sub_langs if sub_langs else None,
+                    subtitles_lang=all_sub_langs if all_sub_langs else None,
                 )
                 xml_path = os.path.join(work_dir, "dvdauthor.xml")
                 with open(xml_path, "w") as xf:

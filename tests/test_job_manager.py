@@ -601,3 +601,76 @@ async def test_job_pipeline_preview_iso_execution(tmp_path, monkeypatch):
     assert job.stage == JobStage.COMPLETED
     assert job.output_iso_path == os.path.join(output_dir, "preview_test_iso_preview.iso")
 
+
+@pytest.mark.asyncio
+async def test_job_pipeline_subtitle_extraction_and_authoring(tmp_path, monkeypatch):
+    manager = JobManager()
+    manager.jobs.clear()
+    media_file = str(tmp_path / "movie_with_subs.mkv")
+    with open(media_file, "w") as f:
+        f.write("content")
+
+    output_dir = str(tmp_path / "output")
+    scratch_dir = str(tmp_path / "scratch")
+    os.makedirs(output_dir, exist_ok=True)
+
+    async def fake_probe(path):
+        return MediaInfo(
+            path=path,
+            filename="movie_with_subs.mkv",
+            duration_sec=3600.0,
+            width=1920,
+            height=1080,
+            aspect_ratio="16:9",
+            frame_rate=24.0,
+            video_codec="hevc",
+            audio_streams=[AudioStreamInfo(index=1, codec_name="ac3", channels=2)],
+            subtitle_streams=[
+                SubtitleStreamInfo(index=2, codec_name="subrip", language="eng", title="English"),
+                SubtitleStreamInfo(index=3, codec_name="hdmv_pgs_subtitle", language="spa", title="Spanish Forced"),
+            ],
+            size_bytes=1000000,
+        )
+
+    monkeypatch.setattr("dvdcompress.job_manager.probe_media_file", fake_probe)
+
+    executed_cmds = []
+
+    class FakeProc:
+        returncode = 0
+        async def wait(self): return 0
+        @property
+        def stderr(self):
+            class Stream:
+                async def read(self, n): return b""
+            return Stream()
+        def send_signal(self, sig): pass
+        def kill(self): pass
+
+    async def fake_exec(*cmd, **kwargs):
+        executed_cmds.append(list(cmd))
+        return FakeProc()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+
+    job_id = manager.create_job(
+        input_files=[media_file],
+        disc_type=DiscType.BD25,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="bluray_with_subs",
+    )
+
+    await manager.start_job(job_id, scratch_dir=scratch_dir, output_dir=output_dir)
+    task = manager.active_tasks[job_id]
+    await task
+
+    job = manager.get_job(job_id)
+    assert job.stage == JobStage.COMPLETED
+
+    # Verify extraction commands were run for both subtitles
+    sub_cmds = [c for c in executed_cmds if "-map" in c and any(c[-1].endswith(ext) for ext in (".srt", ".sup"))]
+    assert len(sub_cmds) == 2
+    assert sub_cmds[0] == ["ffmpeg", "-y", "-i", media_file, "-map", "0:2", os.path.join(scratch_dir, job_id, "title_1_sub_0.srt")]
+    assert sub_cmds[1] == ["ffmpeg", "-y", "-i", media_file, "-map", "0:3", "-c:s", "copy", os.path.join(scratch_dir, job_id, "title_1_sub_1.sup")]
+
+
