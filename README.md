@@ -293,8 +293,4 @@ uvicorn dvdcompress.api:app --host 127.0.0.1 --port 8080 --reload
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
----
 
-<div align="center">
-Built with ❤️ for home lab and physical media enthusiasts.
-</div>
