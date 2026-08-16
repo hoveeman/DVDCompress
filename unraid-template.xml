@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>dvdcompress</Name>
+  <Repository>hovee/dvdcompress:latest</Repository>
+  <Registry>https://hub.docker.com/r/hovee/dvdcompress</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/hoveeman/DVDCompress/issues</Support>
+  <Project>https://github.com/hoveeman/DVDCompress</Project>
+  <Overview>Hardware-accelerated web application for authoring and burning standard-compliant DVD-Video (VIDEO_TS) and Blu-ray (BDMV) discs and ISO images with NVIDIA GPU acceleration (NVENC/NVDEC) and optical drive pass-through.</Overview>
+  <Category>MediaApp:Video MediaApp:Other Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/hoveeman/DVDCompress/main/unraid-template.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/hoveeman/DVDCompress/main/src/dvdcompress/static/favicon.ico</Icon>
+  <ExtraParams>--gpus all --device /dev/sr0:/dev/sr0 --device /dev/sg0:/dev/sg0</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Description>DVDCompress allows you to select video files from mapped storage, automatically calculates optimal bitrates to fit single-layer (4.7GB / 25GB) or dual-layer (8.5GB / 50GB) DVD+R or Blu-ray discs, authors standard-compliant VIDEO_TS and BDMV directory structures, and writes directly to connected optical drives or creates ISO images.</Description>
+  
+  <Config Name="WebUI Port" Target="8080" Default="8080" Mode="tcp" Description="Web interface port" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  
+  <Config Name="Media Directory" Target="/media" Default="/mnt/user/media" Mode="ro" Description="Path to your unencrypted video files (Movies, TV Shows, Home Videos)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/media</Config>
+  
+  <Config Name="Output Directory" Target="/output" Default="/mnt/user/dvd_output" Mode="rw" Description="Destination for created ISO images" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/dvd_output</Config>
+  
+  <Config Name="AppData Config" Target="/config" Default="/mnt/user/appdata/dvdcompress" Mode="rw" Description="Application state and configuration" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/dvdcompress</Config>
+  
+  <Config Name="Scratch Temp Directory" Target="/tmp/dvdcompress" Default="/tmp/dvdcompress" Mode="rw" Description="Fast scratch space for transcoding and authoring" Type="Path" Display="advanced" Required="false" Mask="false">/tmp/dvdcompress</Config>
+  
+  <Config Name="NVIDIA Visible Devices" Target="NVIDIA_VISIBLE_DEVICES" Default="all" Description="GPU UUID or all for hardware transcoding" Type="Variable" Display="advanced" Required="false" Mask="false">all</Config>
+  
+  <Config Name="NVIDIA Driver Capabilities" Target="NVIDIA_DRIVER_CAPABILITIES" Default="all" Description="NVIDIA driver capabilities (all, compute, video, utility)" Type="Variable" Display="advanced" Required="false" Mask="false">all</Config>
+</Container>
