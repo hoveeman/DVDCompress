@@ -321,6 +321,7 @@ class JobManager:
                         audio_stream_idx=audio_idx,
                         audio_channels=audio_ch,
                         use_gpu=job.use_gpu,
+                        is_hdr=info.is_hdr,
                         seek_start_sec=seek_sec,
                         duration_sec=dur_sec,
                     )
@@ -334,9 +335,13 @@ class JobManager:
                         tv_standard=job.tv_standard,
                         aspect_ratio=job.aspect_ratio,
                         use_gpu=job.use_gpu,
+                        is_hdr=info.is_hdr,
                         seek_start_sec=seek_sec,
                         duration_sec=dur_sec,
                     )
+
+                if info.is_hdr:
+                    self.log(job_id, f"Applying Hable Filmic Tone-Mapping (HDR -> SDR) for {info.filename}")
 
                 self.log(job_id, f"Transcoding [{idx+1}/{len(media_infos)}]: {info.filename}")
                 proc = await asyncio.create_subprocess_exec(
