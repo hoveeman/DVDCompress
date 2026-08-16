@@ -26,6 +26,13 @@ from dvdcompress.iso import (
     build_genisoimage_command,
     build_xorriso_bd_command,
 )
+from dvdcompress.burner import (
+    OpticalDrive,
+    scan_optical_drives,
+    build_burn_command,
+    parse_burn_progress_line,
+    parse_lsscsi_output,
+)
 
 __all__ = [
     "DiscType",
@@ -47,6 +54,11 @@ __all__ = [
     "format_chapter_time",
     "build_genisoimage_command",
     "build_xorriso_bd_command",
+    "OpticalDrive",
+    "scan_optical_drives",
+    "build_burn_command",
+    "parse_burn_progress_line",
+    "parse_lsscsi_output",
 ]
 
 
