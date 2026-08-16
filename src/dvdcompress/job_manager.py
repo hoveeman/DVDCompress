@@ -142,7 +142,7 @@ class JobManager:
         if job_id in self.listeners and queue in self.listeners[job_id]:
             self.listeners[job_id].remove(queue)
 
-    def log(self, job_id: str, message: str):
+    def log(self, job_id: str, message: str, level: str = "info"):
         job = self.get_job(job_id)
         if job:
             job.logs.append(message)
@@ -478,11 +478,15 @@ class JobManager:
                     ext = ".sup" if is_bmp else ".srt"
                     sub_out_name = f"title_{t_idx+1}_sub_{s_idx}{ext}"
                     sub_out_path = os.path.join(work_dir, sub_out_name)
+                    seek_s = max(0.0, (info.duration_sec / 2.0) - 30.0) if (is_preview and info.duration_sec > 60.0) else None
+                    dur_s = min(60.0, info.duration_sec) if is_preview else None
                     extract_cmd = build_subtitle_extraction_command(
                         input_file=info.path,
                         stream_index=s.index,
                         output_sub_path=sub_out_path,
                         is_bitmap=is_bmp,
+                        seek_start_sec=seek_s,
+                        duration_sec=dur_s,
                     )
                     self.log(job_id, f"Extracting subtitle track [{lang}]: {s.title or s.codec_name}")
                     sub_proc = await asyncio.create_subprocess_exec(
@@ -492,7 +496,7 @@ class JobManager:
                     )
                     current_process = sub_proc
                     self.active_processes[job_id] = sub_proc
-                    await sub_proc.wait()
+                    sub_stdout, sub_stderr = await sub_proc.communicate()
                     current_process = None
                     if job_id in self.active_processes:
                         del self.active_processes[job_id]
@@ -504,7 +508,8 @@ class JobManager:
                             "title": s.title,
                         })
                     else:
-                        self.log(job_id, f"Warning: could not extract subtitle track {s.index} ({lang})", "warning")
+                        err_snip = sub_stderr.decode(errors="replace").strip()[-200:]
+                        self.log(job_id, f"Warning: could not extract subtitle track {s.index} ({lang}): {err_snip}", "warning")
                 extracted_subtitles_by_title.append(title_subs)
 
             # Build chapter list for each title
@@ -536,15 +541,21 @@ class JobManager:
                 meta_path = os.path.join(work_dir, "tsmuxer.meta")
                 with open(meta_path, "w") as mf:
                     mf.write(meta_content)
-                proc = await asyncio.create_subprocess_exec("tsMuxeR", meta_path, author_dir)
+                proc = await asyncio.create_subprocess_exec(
+                    "tsMuxeR", meta_path, author_dir,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
                 current_process = proc
                 self.active_processes[job_id] = proc
-                await proc.wait()
+                ts_out, ts_err = await proc.communicate()
                 current_process = None
                 if job_id in self.active_processes:
                     del self.active_processes[job_id]
                 if proc.returncode != 0:
-                    raise RuntimeError("Authoring failed with tsMuxeR")
+                    err_msg = ts_err.decode(errors="replace").strip() or ts_out.decode(errors="replace").strip()
+                    self.log(job_id, f"tsMuxeR error: {err_msg}", "error")
+                    raise RuntimeError(f"Authoring failed with tsMuxeR: {err_msg[-200:]}")
             else:
                 xml_content = generate_dvdauthor_xml(
                     titles_mpg=transcoded_files,
@@ -556,15 +567,21 @@ class JobManager:
                 xml_path = os.path.join(work_dir, "dvdauthor.xml")
                 with open(xml_path, "w") as xf:
                     xf.write(xml_content)
-                proc = await asyncio.create_subprocess_exec("dvdauthor", "-o", author_dir, "-x", xml_path)
+                proc = await asyncio.create_subprocess_exec(
+                    "dvdauthor", "-o", author_dir, "-x", xml_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
                 current_process = proc
                 self.active_processes[job_id] = proc
-                await proc.wait()
+                dvd_out, dvd_err = await proc.communicate()
                 current_process = None
                 if job_id in self.active_processes:
                     del self.active_processes[job_id]
                 if proc.returncode != 0:
-                    raise RuntimeError("Authoring failed with dvdauthor")
+                    err_msg = dvd_err.decode(errors="replace").strip() or dvd_out.decode(errors="replace").strip()
+                    self.log(job_id, f"dvdauthor error: {err_msg}", "error")
+                    raise RuntimeError(f"Authoring failed with dvdauthor: {err_msg[-200:]}")
 
             # Check pause before ISO creation
             if job_id in self.pause_events:
@@ -592,15 +609,21 @@ class JobManager:
             else:
                 iso_cmd = build_genisoimage_command(author_dir, iso_path, clean_iso_name)
 
-            proc = await asyncio.create_subprocess_exec(*iso_cmd)
+            proc = await asyncio.create_subprocess_exec(
+                *iso_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
             current_process = proc
             self.active_processes[job_id] = proc
-            await proc.wait()
+            iso_out, iso_err = await proc.communicate()
             current_process = None
             if job_id in self.active_processes:
                 del self.active_processes[job_id]
             if proc.returncode != 0:
-                raise RuntimeError("ISO creation failed")
+                err_msg = iso_err.decode(errors="replace").strip() or iso_out.decode(errors="replace").strip()
+                self.log(job_id, f"ISO creation error: {err_msg}", "error")
+                raise RuntimeError(f"ISO creation failed: {err_msg[-200:]}")
 
             # If PREVIEW_ISO, pipeline completes here
             if job.output_mode == OutputMode.PREVIEW_ISO:

@@ -17,9 +17,17 @@ def build_subtitle_extraction_command(
     stream_index: int,
     output_sub_path: str,
     is_bitmap: bool = False,
+    seek_start_sec: Optional[float] = None,
+    duration_sec: Optional[float] = None,
 ) -> List[str]:
     """Build FFmpeg command to extract a subtitle stream to .srt (text) or .sup (bitmap PGS)."""
-    cmd = ["ffmpeg", "-y", "-i", input_file, "-map", f"0:{stream_index}"]
+    cmd = ["ffmpeg", "-y"]
+    if seek_start_sec is not None and seek_start_sec > 0:
+        cmd.extend(["-ss", str(seek_start_sec)])
+    cmd.extend(["-i", input_file])
+    if duration_sec is not None and duration_sec > 0:
+        cmd.extend(["-t", str(duration_sec)])
+    cmd.extend(["-map", f"0:{stream_index}"])
     if is_bitmap:
         cmd.extend(["-c:s", "copy"])
     cmd.append(output_sub_path)

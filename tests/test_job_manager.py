@@ -186,6 +186,9 @@ async def test_job_pipeline_dvd_iso_success(tmp_path):
         async def wait(self):
             return 0
 
+        async def communicate(self):
+            return (b"", b"")
+
     with patch(
         "dvdcompress.job_manager.probe_media_file",
         new_callable=AsyncMock,
@@ -269,6 +272,9 @@ async def test_job_pipeline_bluray_burn_success(tmp_path):
 
         async def wait(self):
             return 0
+
+        async def communicate(self):
+            return (b"", b"")
 
     with patch(
         "dvdcompress.job_manager.probe_media_file",
@@ -513,6 +519,7 @@ async def test_job_pipeline_preview_video_execution(tmp_path, monkeypatch):
             return Stream()
         def send_signal(self, sig): pass
         def kill(self): pass
+        async def communicate(self): return (b"", b"")
 
     async def fake_exec(*cmd, **kwargs):
         executed_cmds.append(list(cmd))
@@ -580,6 +587,7 @@ async def test_job_pipeline_preview_iso_execution(tmp_path, monkeypatch):
             return Stream()
         def send_signal(self, sig): pass
         def kill(self): pass
+        async def communicate(self): return (b"", b"")
 
     async def fake_exec(*cmd, **kwargs):
         return FakeProc()
@@ -646,6 +654,7 @@ async def test_job_pipeline_subtitle_extraction_and_authoring(tmp_path, monkeypa
             return Stream()
         def send_signal(self, sig): pass
         def kill(self): pass
+        async def communicate(self): return (b"", b"")
 
     async def fake_exec(*cmd, **kwargs):
         executed_cmds.append(list(cmd))
@@ -719,6 +728,7 @@ async def test_job_pipeline_passthrough_execution(tmp_path, monkeypatch):
             return Stream()
         def send_signal(self, sig): pass
         def kill(self): pass
+        async def communicate(self): return (b"", b"")
 
     async def fake_exec(*cmd, **kwargs):
         executed_cmds.append(list(cmd))

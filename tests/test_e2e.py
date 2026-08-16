@@ -287,6 +287,11 @@ class SmartSubprocessMock:
     async def wait(self) -> int:
         return self.returncode
 
+    async def communicate(self) -> tuple[bytes, bytes]:
+        if self.returncode != 0 and self.fail_on_cmd:
+            return (b"", b"Mocked error occurred\n")
+        return (b"", b"")
+
     def kill(self):
         self.killed = True
 
@@ -1340,6 +1345,7 @@ async def test_e2e_dvd_preview_video_pipeline(tmp_path, monkeypatch):
             return Stream()
         def send_signal(self, sig): pass
         def kill(self): pass
+        async def communicate(self): return (b"", b"")
 
     async def fake_exec(*cmd, **kwargs):
         executed_commands.append(list(cmd))
@@ -1420,6 +1426,7 @@ async def test_e2e_bluray_preview_iso_pipeline(tmp_path, monkeypatch):
             return Stream()
         def send_signal(self, sig): pass
         def kill(self): pass
+        async def communicate(self): return (b"", b"")
 
     async def fake_exec(*cmd, **kwargs):
         executed_commands.append(list(cmd))
@@ -1499,6 +1506,7 @@ async def test_e2e_dvd_and_bluray_multi_subtitle_authoring(tmp_path, monkeypatch
             return Stream()
         def send_signal(self, sig): pass
         def kill(self): pass
+        async def communicate(self): return (b"", b"")
 
     captured_meta = {}
     captured_xml = {}
@@ -1611,6 +1619,7 @@ async def test_e2e_hdr_hable_tonemapping_pipeline(tmp_path, monkeypatch):
             return Stream()
         def send_signal(self, sig): pass
         def kill(self): pass
+        async def communicate(self): return (b"", b"")
 
     async def fake_exec(*cmd, **kwargs):
         executed_cmds.append(list(cmd))
@@ -1692,6 +1701,7 @@ async def test_e2e_4k_uhd_passthrough_pipeline(tmp_path, monkeypatch):
             return Stream()
         def send_signal(self, sig): pass
         def kill(self): pass
+        async def communicate(self): return (b"", b"")
 
     async def fake_exec(*cmd, **kwargs):
         executed_cmds.append(list(cmd))

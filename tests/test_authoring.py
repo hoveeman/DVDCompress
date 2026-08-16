@@ -98,14 +98,16 @@ def test_build_subtitle_extraction_command():
     )
     assert cmd_text == ["ffmpeg", "-y", "-i", "/media/movie.mkv", "-map", "0:2", "/tmp/sub.srt"]
 
-    # Bitmap PGS subtitle extraction (to .sup)
+    # Bitmap PGS subtitle extraction (to .sup) with seek & duration
     cmd_bitmap = build_subtitle_extraction_command(
         input_file="/media/movie.mkv",
         stream_index=3,
         output_sub_path="/tmp/sub.sup",
         is_bitmap=True,
+        seek_start_sec=120.0,
+        duration_sec=60.0,
     )
-    assert cmd_bitmap == ["ffmpeg", "-y", "-i", "/media/movie.mkv", "-map", "0:3", "-c:s", "copy", "/tmp/sub.sup"]
+    assert cmd_bitmap == ["ffmpeg", "-y", "-ss", "120.0", "-i", "/media/movie.mkv", "-t", "60.0", "-map", "0:3", "-c:s", "copy", "/tmp/sub.sup"]
 
 
 def test_generate_tsmuxer_meta_with_subtitles():
