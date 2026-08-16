@@ -1,0 +1,124 @@
+# tests/test_transcoder.py
+import pytest
+from dvdcompress.models import TVStandard, AspectRatio
+from dvdcompress.transcoder import (
+    build_dvd_transcode_command,
+    build_bluray_transcode_command,
+    parse_ffmpeg_progress_line,
+)
+
+def test_dvd_ntsc_command_structure():
+    cmd = build_dvd_transcode_command(
+        input_file="/media/input.mkv",
+        output_mpg="/tmp/output.mpg",
+        video_bitrate_kbps=4500,
+        audio_stream_idx=1,
+        audio_channels=6,
+        tv_standard=TVStandard.NTSC,
+        aspect_ratio=AspectRatio.RATIO_16_9,
+        use_gpu=False,
+    )
+    cmd_str = " ".join(cmd)
+    assert "-target ntsc-dvd" in cmd_str
+    assert "-b:v 4500k" in cmd_str
+    assert "-aspect 16:9" in cmd_str
+    assert "-c:a ac3" in cmd_str
+    assert "-ar 48000" in cmd_str
+    assert "-ac 6" in cmd_str
+    assert "-b:a 384k" in cmd_str
+    assert "scale=720:480" in cmd_str
+    assert cmd[-1] == "/tmp/output.mpg"
+
+def test_dvd_gpu_decode_flag():
+    cmd = build_dvd_transcode_command(
+        input_file="/media/input.mkv",
+        output_mpg="/tmp/output.mpg",
+        video_bitrate_kbps=4500,
+        audio_stream_idx=1,
+        audio_channels=2,
+        tv_standard=TVStandard.PAL,
+        aspect_ratio=AspectRatio.RATIO_16_9,
+        use_gpu=True,
+    )
+    cmd_str = " ".join(cmd)
+    assert "-hwaccel cuda" in cmd_str
+    assert "-target pal-dvd" in cmd_str
+    assert "scale=720:576" in cmd_str
+    assert "-ac 2" in cmd_str
+    assert "-b:a 192k" in cmd_str
+
+def test_dvd_auto_standard_and_4_3_aspect():
+    cmd = build_dvd_transcode_command(
+        input_file="/media/input.mkv",
+        output_mpg="/tmp/output.mpg",
+        video_bitrate_kbps=3000,
+        audio_stream_idx=2,
+        audio_channels=2,
+        tv_standard=TVStandard.AUTO,
+        aspect_ratio=AspectRatio.RATIO_4_3,
+        use_gpu=False,
+    )
+    cmd_str = " ".join(cmd)
+    assert "-target ntsc-dvd" in cmd_str
+    assert "scale=720:480" in cmd_str
+    assert "-aspect 4:3" in cmd_str
+    assert "-map 0:2" in cmd_str
+
+def test_bluray_nvenc_command():
+    cmd = build_bluray_transcode_command(
+        input_file="/media/input.mkv",
+        output_m2ts="/tmp/output.m2ts",
+        video_bitrate_kbps=25000,
+        audio_stream_idx=1,
+        audio_channels=6,
+        use_gpu=True,
+    )
+    cmd_str = " ".join(cmd)
+    assert "-hwaccel cuda" in cmd_str
+    assert "h264_nvenc" in cmd_str
+    assert "-b:v 25000k" in cmd_str
+    assert "-profile:v high" in cmd_str
+    assert "-level 4.1" in cmd_str
+    assert "-c:a ac3" in cmd_str
+    assert "-ac 6" in cmd_str
+    assert "-b:a 448k" in cmd_str
+    assert cmd[-1] == "/tmp/output.m2ts"
+
+def test_bluray_cpu_libx264_command():
+    cmd = build_bluray_transcode_command(
+        input_file="/media/input.mkv",
+        output_m2ts="/tmp/output.m2ts",
+        video_bitrate_kbps=20000,
+        audio_stream_idx=0,
+        audio_channels=2,
+        use_gpu=False,
+    )
+    cmd_str = " ".join(cmd)
+    assert "libx264" in cmd_str
+    assert "-bluray-compat 1" in cmd_str
+    assert "-profile:v high" in cmd_str
+    assert "-level 4.1" in cmd_str
+    assert "-b:v 20000k" in cmd_str
+    assert "-ac 2" in cmd_str
+    assert "-b:a 192k" in cmd_str
+    assert "-hwaccel" not in cmd_str
+
+def test_parse_ffmpeg_progress():
+    line = "frame= 1450 fps= 85.4 q=2.0 size=   45056kB time=00:01:00.45 bitrate=6104.2kbits/s speed=3.56x"
+    progress = parse_ffmpeg_progress_line(line)
+    assert progress["frame"] == 1450
+    assert progress["fps"] == 85.4
+    assert progress["speed"] == "3.56x"
+    assert progress["time_sec"] == pytest.approx(60.45, 0.1)
+
+def test_parse_ffmpeg_progress_empty_or_partial():
+    line = "frame= 50 fps= 0.0 q=0.0 size= 0kB time=00:00:02.00 speed=N/A"
+    progress = parse_ffmpeg_progress_line(line)
+    assert progress["frame"] == 50
+    assert progress["fps"] == 0.0
+    assert progress["time_sec"] == pytest.approx(2.0, 0.01)
+    assert "speed" not in progress
+
+    line_no_match = "Input #0, matroska,webm, from '/media/input.mkv':"
+    progress_empty = parse_ffmpeg_progress_line(line_no_match)
+    assert progress_empty == {}

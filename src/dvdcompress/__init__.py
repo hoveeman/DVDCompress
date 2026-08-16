@@ -12,6 +12,11 @@ from dvdcompress.models import (
     BitrateBudget,
 )
 from dvdcompress.calculator import calculate_bitrate_budget, DISC_CAPACITIES_MB
+from dvdcompress.transcoder import (
+    build_dvd_transcode_command,
+    build_bluray_transcode_command,
+    parse_ffmpeg_progress_line,
+)
 
 __all__ = [
     "DiscType",
@@ -25,4 +30,8 @@ __all__ = [
     "BitrateBudget",
     "calculate_bitrate_budget",
     "DISC_CAPACITIES_MB",
+    "build_dvd_transcode_command",
+    "build_bluray_transcode_command",
+    "parse_ffmpeg_progress_line",
 ]
+
