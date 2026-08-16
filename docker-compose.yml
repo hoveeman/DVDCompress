@@ -1,0 +1,36 @@
+services:
+  dvdcompress:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dvdcompress:latest
+    container_name: dvdcompress
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=UTC
+      - DVDCOMPRESS_LOG_LEVEL=INFO
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all,video,compute,utility
+    volumes:
+      # Source media directory (mount read-only for safety)
+      - ./media:/media:ro
+      # Authored ISO files output directory
+      - ./output:/output
+      # Application persistent configuration and job logs
+      - ./config:/config
+      # Scratch directory for intermediate transcoding and authoring
+      - ./tmp:/tmp/dvdcompress
+    devices:
+      # Optical disc writer block device and SCSI generic pass-through
+      # Uncomment or adjust to match your host optical drive paths:
+      - /dev/sr0:/dev/sr0
+      - /dev/sg0:/dev/sg0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, video, compute, utility]
