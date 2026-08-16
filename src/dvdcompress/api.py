@@ -33,9 +33,16 @@ from dvdcompress.system_info import get_hardware_telemetry
 app = FastAPI(title="DVDCompress API", version="1.0.0")
 job_manager = JobManager()
 
-MEDIA_DIR = os.environ.get("MEDIA_DIR", "/media")
-OUTPUT_DIR = os.environ.get("OUTPUT_DIR", "/output")
-SCRATCH_DIR = os.environ.get("SCRATCH_DIR", "/tmp/dvdcompress")
+def get_media_dir() -> str:
+    return os.environ.get("DVDCOMPRESS_MEDIA_DIR", os.environ.get("MEDIA_DIR", "/media"))
+
+
+def get_output_dir() -> str:
+    return os.environ.get("DVDCOMPRESS_OUTPUT_DIR", os.environ.get("OUTPUT_DIR", "/output"))
+
+
+def get_scratch_dir() -> str:
+    return os.environ.get("DVDCOMPRESS_TEMP_DIR", os.environ.get("SCRATCH_DIR", "/tmp/dvdcompress"))
 
 VIDEO_EXTENSIONS = {
     ".mp4",
@@ -169,7 +176,8 @@ def health():
 
 @app.get("/api/files")
 def list_files(path: Optional[str] = None):
-    target = path or MEDIA_DIR
+    media_dir = get_media_dir()
+    target = path or media_dir
     if not os.path.exists(target):
         return {
             "current_path": target,
@@ -215,7 +223,7 @@ def list_files(path: Optional[str] = None):
                 )
 
     norm_target = os.path.abspath(target)
-    norm_media = os.path.abspath(MEDIA_DIR)
+    norm_media = os.path.abspath(media_dir)
     parent = (
         os.path.dirname(norm_target)
         if norm_target != norm_media and norm_target != "/"
@@ -281,7 +289,7 @@ async def create_job(req: CreateJobRequest):
         use_gpu=req.use_gpu,
     )
     await job_manager.start_job(
-        job_id, scratch_dir=SCRATCH_DIR, output_dir=OUTPUT_DIR
+        job_id, scratch_dir=get_scratch_dir(), output_dir=get_output_dir()
     )
     return {"job_id": job_id, "status": "started"}
 
