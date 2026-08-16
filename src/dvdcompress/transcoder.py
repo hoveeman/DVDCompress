@@ -37,9 +37,10 @@ def build_dvd_transcode_command(
 
     cmd.extend(["-i", input_file])
 
-    # Video stream mapping and scaling
+    # Video stream mapping, audio mapping, and subtitle mapping
     cmd.extend(["-map", "0:v:0"])
     cmd.extend(["-map", f"0:{audio_stream_idx}"])
+    cmd.extend(["-map", "0:s?", "-c:s", "dvdsub"])
 
     is_ntsc = tv_standard in (TVStandard.NTSC, TVStandard.AUTO)
     target = "ntsc-dvd" if is_ntsc else "pal-dvd"
@@ -47,26 +48,12 @@ def build_dvd_transcode_command(
 
     if is_ntsc:
         final_w, final_h = 720, 480
-        if is_16_9:
-            canvas_w, canvas_h = 854, 480
-            sar_val, dar_val = "32/27", "16/9"
-        else:
-            canvas_w, canvas_h = 640, 480
-            sar_val, dar_val = "8/9", "4/3"
+        sar_val, dar_val = ("32/27", "16/9") if is_16_9 else ("8/9", "4/3")
     else:
         final_w, final_h = 720, 576
-        if is_16_9:
-            canvas_w, canvas_h = 1024, 576
-            sar_val, dar_val = "64/45", "16/9"
-        else:
-            canvas_w, canvas_h = 768, 576
-            sar_val, dar_val = "16/15", "4/3"
+        sar_val, dar_val = ("64/45", "16/9") if is_16_9 else ("16/15", "4/3")
 
-    vf_filter = (
-        f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=decrease,"
-        f"pad={canvas_w}:{canvas_h}:(ow-iw)/2:(oh-ih)/2,"
-        f"scale={final_w}:{final_h},setsar={sar_val},setdar={dar_val}"
-    )
+    vf_filter = f"scale={final_w}:{final_h},setsar={sar_val},setdar={dar_val}"
 
     # High quality MPEG-2 video encoding
     cmd.extend(["-target", target])
@@ -116,6 +103,7 @@ def build_bluray_transcode_command(
         cmd.extend(["-c:v", "libx264", "-profile:v", "high", "-level", "4.1", "-bluray-compat", "1"])
 
     cmd.extend(["-map", "0:v:0", "-map", f"0:{audio_stream_idx}"])
+    cmd.extend(["-map", "0:s?", "-c:s", "copy"])
     cmd.extend(["-b:v", f"{video_bitrate_kbps}k", "-maxrate", "35000k", "-bufsize", "30000k"])
     cmd.extend(["-g", "24", "-keyint_min", "1", "-bf", "3"])
     cmd.extend(["-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"])

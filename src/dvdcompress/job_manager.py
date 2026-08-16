@@ -395,11 +395,19 @@ class JobManager:
                 if proc.returncode != 0:
                     raise RuntimeError("Authoring failed with tsMuxeR")
             else:
+                sub_langs = []
+                for info in media_infos:
+                    for s in info.subtitle_streams:
+                        lang = s.language or "en"
+                        if lang not in sub_langs:
+                            sub_langs.append(lang)
+
                 xml_content = generate_dvdauthor_xml(
                     titles_mpg=transcoded_files,
                     chapters_sec=chapters_list,
                     menu_mode=job.menu_mode,
                     tv_standard=job.tv_standard,
+                    subtitles_lang=sub_langs if sub_langs else None,
                 )
                 xml_path = os.path.join(work_dir, "dvdauthor.xml")
                 with open(xml_path, "w") as xf:

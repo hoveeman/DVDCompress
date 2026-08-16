@@ -17,6 +17,7 @@ def generate_dvdauthor_xml(
     chapters_sec: List[List[float]],
     menu_mode: MenuMode = MenuMode.AUTOPLAY,
     tv_standard: TVStandard = TVStandard.NTSC,
+    subtitles_lang: Optional[List[str]] = None,
 ) -> str:
     """Generate a standard dvdauthor.xml structure for authoring DVD-Video."""
     video_format = "ntsc" if tv_standard in (TVStandard.NTSC, TVStandard.AUTO) else "pal"
@@ -26,9 +27,14 @@ def generate_dvdauthor_xml(
         '  <vmgm />',
         '  <titleset>',
         '    <titles>',
-        f'      <video format="{video_format}" aspect="16:9" />',
+        f'      <video format="{video_format}" aspect="16:9" widescreen="nopanscan" />',
         '      <audio format="ac3" channels="2" />',
     ]
+
+    if subtitles_lang:
+        for lang in subtitles_lang:
+            clean_lang = lang[:2].lower() if lang and len(lang) >= 2 else "en"
+            xml_lines.append(f'      <subpicture lang="{clean_lang}" />')
 
     for idx, mpg in enumerate(titles_mpg):
         chaps = (
