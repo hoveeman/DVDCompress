@@ -58,6 +58,7 @@ class MediaInfo(BaseModel):
     audio_streams: List[AudioStreamInfo] = Field(default_factory=list)
     subtitle_streams: List[SubtitleStreamInfo] = Field(default_factory=list)
     chapters_count: int = 0
+    chapter_times: List[float] = Field(default_factory=list)
     size_bytes: int = 0
 
 # Aliases for interface compatibility

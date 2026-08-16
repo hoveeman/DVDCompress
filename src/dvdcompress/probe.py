@@ -96,6 +96,13 @@ def parse_ffprobe_output(file_path: str, data: Dict[str, Any]) -> MediaInfo:
                 )
             )
 
+    chapter_times = []
+    for ch in chapters:
+        start_t = float(ch.get("start_time", 0.0) or 0.0)
+        if start_t not in chapter_times:
+            chapter_times.append(start_t)
+    chapter_times.sort()
+
     return MediaInfo(
         path=file_path,
         filename=filename,
@@ -108,6 +115,7 @@ def parse_ffprobe_output(file_path: str, data: Dict[str, Any]) -> MediaInfo:
         audio_streams=audio_streams,
         subtitle_streams=subtitle_streams,
         chapters_count=len(chapters),
+        chapter_times=chapter_times,
         size_bytes=size_bytes,
     )
 

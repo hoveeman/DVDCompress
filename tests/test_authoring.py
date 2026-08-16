@@ -48,11 +48,14 @@ def test_dvdauthor_xml_empty_chapters():
 
 def test_generate_tsmuxer_meta():
     meta = generate_tsmuxer_meta(["/tmp/track1.m2ts", "/tmp/track2.m2ts"])
-    assert "MUXOPT --no-pcr-on-video-pid --new-audio-pes --blu-ray --vbr --custom-chapters=00:00:00.000" in meta
+    assert "MUXOPT --no-pcr-on-video-pid --new-audio-pes --blu-ray --vbr --auto-chapters=5" in meta
     assert 'V_MPEG4/ISO/AVC, "/tmp/track1.m2ts", fps=23.976, insertSEI, contSPS' in meta
     assert 'A_AC3, "/tmp/track1.m2ts"' in meta
     assert 'V_MPEG4/ISO/AVC, "/tmp/track2.m2ts", fps=23.976, insertSEI, contSPS' in meta
     assert 'A_AC3, "/tmp/track2.m2ts"' in meta
+
+    meta_custom = generate_tsmuxer_meta(["/tmp/track1.m2ts"], chapters_sec=[0.0, 300.0, 600.0])
+    assert "--custom-chapters=00:00:00.000;00:05:00.000;00:10:00.000" in meta_custom
 
 
 def test_iso_commands():

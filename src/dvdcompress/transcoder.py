@@ -43,17 +43,37 @@ def build_dvd_transcode_command(
 
     is_ntsc = tv_standard in (TVStandard.NTSC, TVStandard.AUTO)
     target = "ntsc-dvd" if is_ntsc else "pal-dvd"
-    scale_w, scale_h = (720, 480) if is_ntsc else (720, 576)
+    is_16_9 = aspect_ratio == AspectRatio.RATIO_16_9
+
+    if is_ntsc:
+        final_w, final_h = 720, 480
+        if is_16_9:
+            canvas_w, canvas_h = 854, 480
+            sar_val, dar_val = "32/27", "16/9"
+        else:
+            canvas_w, canvas_h = 640, 480
+            sar_val, dar_val = "8/9", "4/3"
+    else:
+        final_w, final_h = 720, 576
+        if is_16_9:
+            canvas_w, canvas_h = 1024, 576
+            sar_val, dar_val = "64/45", "16/9"
+        else:
+            canvas_w, canvas_h = 768, 576
+            sar_val, dar_val = "16/15", "4/3"
+
+    vf_filter = (
+        f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=decrease,"
+        f"pad={canvas_w}:{canvas_h}:(ow-iw)/2:(oh-ih)/2,"
+        f"scale={final_w}:{final_h},setsar={sar_val},setdar={dar_val}"
+    )
 
     # High quality MPEG-2 video encoding
     cmd.extend(["-target", target])
     cmd.extend(["-b:v", f"{video_bitrate_kbps}k"])
     cmd.extend(["-maxrate", "8500k", "-bufsize", "1835k"])
     cmd.extend(["-aspect", aspect_ratio.value])
-    cmd.extend([
-        "-vf",
-        f"scale={scale_w}:{scale_h}:force_original_aspect_ratio=decrease,pad={scale_w}:{scale_h}:(ow-iw)/2:(oh-ih)/2,setsar=1",
-    ])
+    cmd.extend(["-vf", vf_filter])
 
     # Audio encoding
     cmd.extend(["-c:a", "ac3", "-ar", "48000"])

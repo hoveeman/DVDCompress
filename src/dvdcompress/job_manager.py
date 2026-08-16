@@ -365,8 +365,23 @@ class JobManager:
             author_dir = os.path.join(work_dir, "author")
             os.makedirs(author_dir, exist_ok=True)
 
+            # Build chapter list for each title
+            chapters_list = []
+            for info in media_infos:
+                if info.chapter_times and len(info.chapter_times) >= 2:
+                    chaps = info.chapter_times
+                else:
+                    # Generate automatic 5-minute chapters across the entire movie duration
+                    chaps = [0.0]
+                    curr_t = 300.0
+                    while curr_t < (info.duration_sec - 30.0):
+                        chaps.append(curr_t)
+                        curr_t += 300.0
+                chapters_list.append(chaps)
+
             if is_bluray:
-                meta_content = generate_tsmuxer_meta(transcoded_files)
+                first_chaps = chapters_list[0] if len(chapters_list) > 0 else None
+                meta_content = generate_tsmuxer_meta(transcoded_files, chapters_sec=first_chaps)
                 meta_path = os.path.join(work_dir, "tsmuxer.meta")
                 with open(meta_path, "w") as mf:
                     mf.write(meta_content)
@@ -382,7 +397,7 @@ class JobManager:
             else:
                 xml_content = generate_dvdauthor_xml(
                     titles_mpg=transcoded_files,
-                    chapters_sec=[[0.0, 300.0, 600.0, 900.0] for _ in transcoded_files],
+                    chapters_sec=chapters_list,
                     menu_mode=job.menu_mode,
                     tv_standard=job.tv_standard,
                 )

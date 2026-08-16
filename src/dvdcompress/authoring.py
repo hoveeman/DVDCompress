@@ -55,10 +55,19 @@ def generate_dvdauthor_xml(
     return "\n".join(xml_lines)
 
 
-def generate_tsmuxer_meta(video_files: List[str]) -> str:
+def generate_tsmuxer_meta(
+    video_files: List[str],
+    chapters_sec: Optional[List[float]] = None,
+) -> str:
     """Generate tsMuxeR .meta file content for Blu-ray BDMV muxing."""
+    if chapters_sec and len(chapters_sec) > 0:
+        formatted_chaps = ";".join([format_chapter_time(c) for c in chapters_sec])
+        chap_opt = f"--custom-chapters={formatted_chaps}"
+    else:
+        chap_opt = "--auto-chapters=5"
+
     meta_lines = [
-        "MUXOPT --no-pcr-on-video-pid --new-audio-pes --blu-ray --vbr --custom-chapters=00:00:00.000"
+        f"MUXOPT --no-pcr-on-video-pid --new-audio-pes --blu-ray --vbr {chap_opt}"
     ]
     for vf in video_files:
         meta_lines.append(f'V_MPEG4/ISO/AVC, "{vf}", fps=23.976, insertSEI, contSPS')
