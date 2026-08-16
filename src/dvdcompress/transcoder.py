@@ -15,6 +15,7 @@ def build_dvd_transcode_command(
     tv_standard: TVStandard = TVStandard.NTSC,
     aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9,
     use_gpu: bool = False,
+    is_hdr: bool = False,
     seek_start_sec: Optional[float] = None,
     duration_sec: Optional[float] = None,
 ) -> List[str]:
@@ -29,6 +30,7 @@ def build_dvd_transcode_command(
         tv_standard: TV standard (NTSC or PAL, AUTO defaults to NTSC).
         aspect_ratio: Display aspect ratio (16:9 or 4:3).
         use_gpu: Enable CUDA hardware acceleration for decoding.
+        is_hdr: Enable Hable filmic tone-mapping from HDR to SDR.
         seek_start_sec: Optional seek start timestamp in seconds for preview clipping.
         duration_sec: Optional duration in seconds for preview clipping.
 
@@ -63,7 +65,10 @@ def build_dvd_transcode_command(
         final_w, final_h = 720, 576
         sar_val, dar_val = ("64/45", "16/9") if is_16_9 else ("16/15", "4/3")
 
-    vf_filter = f"scale={final_w}:{final_h},setsar={sar_val},setdar={dar_val},format=yuv420p"
+    if is_hdr:
+        vf_filter = f"scale={final_w}:{final_h},setsar={sar_val},setdar={dar_val},format=gbrpf32le,tonemap=tonemap=hable:desat=0.5:peak=100,format=yuv420p"
+    else:
+        vf_filter = f"scale={final_w}:{final_h},setsar={sar_val},setdar={dar_val},format=yuv420p"
 
     # High quality MPEG-2 video encoding
     cmd.extend(["-target", target])
@@ -90,6 +95,7 @@ def build_bluray_transcode_command(
     audio_stream_idx: int = 1,
     audio_channels: int = 6,
     use_gpu: bool = False,
+    is_hdr: bool = False,
     seek_start_sec: Optional[float] = None,
     duration_sec: Optional[float] = None,
 ) -> List[str]:
@@ -102,6 +108,7 @@ def build_bluray_transcode_command(
         audio_stream_idx: Zero-based stream index of audio in input file.
         audio_channels: Number of audio channels (e.g. 2 for stereo, 6 for 5.1).
         use_gpu: Enable NVENC hardware acceleration for encoding.
+        is_hdr: Enable Hable filmic tone-mapping from HDR to SDR.
         seek_start_sec: Optional seek start timestamp in seconds for preview clipping.
         duration_sec: Optional duration in seconds for preview clipping.
 
@@ -128,7 +135,13 @@ def build_bluray_transcode_command(
     cmd.extend(["-map", "0:v:0", "-map", f"0:{audio_stream_idx}"])
     cmd.extend(["-b:v", f"{video_bitrate_kbps}k", "-maxrate", "35000k", "-bufsize", "30000k"])
     cmd.extend(["-g", "24", "-keyint_min", "1", "-bf", "3"])
-    cmd.extend(["-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p"])
+
+    if is_hdr:
+        vf_filter = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=gbrpf32le,tonemap=tonemap=hable:desat=0.5:peak=100,format=yuv420p"
+    else:
+        vf_filter = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
+
+    cmd.extend(["-vf", vf_filter])
     cmd.extend(["-c:a", "ac3", "-ar", "48000"])
     if audio_channels >= 6:
         cmd.extend(["-ac", "6", "-b:a", "448k"])

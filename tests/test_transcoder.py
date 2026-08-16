@@ -191,4 +191,38 @@ def test_hdr_and_dolby_vision_filter_format():
     assert "-map 0:s?" not in bd_str
 
 
+def test_hable_tonemapping_filtergraph_for_hdr():
+    """Verify that is_hdr=True injects Hable filmic tone-mapping into filtergraph."""
+    # 1. DVD with HDR
+    dvd_hdr = build_dvd_transcode_command(
+        input_file="/media/hdr_clip.mkv",
+        output_mpg="/output/hdr_dvd.mpg",
+        video_bitrate_kbps=5000,
+        is_hdr=True,
+    )
+    dvd_hdr_str = " ".join(dvd_hdr)
+    assert "format=gbrpf32le,tonemap=tonemap=hable:desat=0.5:peak=100,format=yuv420p" in dvd_hdr_str
+
+    # 2. Blu-ray with HDR
+    bd_hdr = build_bluray_transcode_command(
+        input_file="/media/hdr_clip.mkv",
+        output_m2ts="/output/hdr_bd.m2ts",
+        video_bitrate_kbps=25000,
+        is_hdr=True,
+    )
+    bd_hdr_str = " ".join(bd_hdr)
+    assert "format=gbrpf32le,tonemap=tonemap=hable:desat=0.5:peak=100,format=yuv420p" in bd_hdr_str
+
+    # 3. SDR input should NOT have tonemap=hable
+    dvd_sdr = build_dvd_transcode_command(
+        input_file="/media/sdr_clip.mp4",
+        output_mpg="/output/sdr_dvd.mpg",
+        video_bitrate_kbps=5000,
+        is_hdr=False,
+    )
+    dvd_sdr_str = " ".join(dvd_sdr)
+    assert "tonemap=hable" not in dvd_sdr_str
+
+
+
 
