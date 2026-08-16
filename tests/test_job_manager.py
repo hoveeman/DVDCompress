@@ -472,3 +472,132 @@ async def test_job_auto_resume_on_complete():
     await manager._auto_resume_next_job(exclude_job_id=job1)
     assert j2.stage == JobStage.TRANSCODING
     assert j2.is_paused is False
+
+
+@pytest.mark.asyncio
+async def test_job_pipeline_preview_video_execution(tmp_path, monkeypatch):
+    manager = JobManager()
+    manager.jobs.clear()
+    media_file = str(tmp_path / "movie.mkv")
+    with open(media_file, "w") as f:
+        f.write("dummy")
+
+    scratch_dir = str(tmp_path / "scratch")
+    output_dir = str(tmp_path / "output")
+    os.makedirs(output_dir, exist_ok=True)
+
+    async def fake_probe(path):
+        return MediaInfo(
+            path=path,
+            filename="movie.mkv",
+            duration_sec=7200.0,
+            width=1920,
+            height=1080,
+            aspect_ratio="16:9",
+            frame_rate=23.976,
+            video_codec="h264",
+            size_bytes=1000000,
+        )
+
+    monkeypatch.setattr("dvdcompress.job_manager.probe_media_file", fake_probe)
+
+    executed_cmds = []
+
+    class FakeProc:
+        returncode = 0
+        async def wait(self): return 0
+        @property
+        def stderr(self):
+            class Stream:
+                async def read(self, n): return b""
+            return Stream()
+        def send_signal(self, sig): pass
+        def kill(self): pass
+
+    async def fake_exec(*cmd, **kwargs):
+        executed_cmds.append(list(cmd))
+        out = cmd[-1]
+        with open(out, "w") as f:
+            f.write("video_stream")
+        return FakeProc()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+
+    job_id = manager.create_job(
+        input_files=[media_file],
+        disc_type=DiscType.DVD5,
+        output_mode=OutputMode.PREVIEW_VIDEO,
+        output_name="test_movie_preview",
+    )
+
+    await manager.start_job(job_id, scratch_dir=scratch_dir, output_dir=output_dir)
+    task = manager.active_tasks[job_id]
+    await task
+
+    job = manager.get_job(job_id)
+    assert job.stage == JobStage.COMPLETED
+    assert job.output_iso_path == os.path.join(output_dir, "preview_test_movie_preview.mpg")
+    ffmpeg_cmd = executed_cmds[0]
+    assert "-ss" in ffmpeg_cmd
+    assert ffmpeg_cmd[ffmpeg_cmd.index("-ss") + 1] == "3570.0"
+    assert "-t" in ffmpeg_cmd
+    assert ffmpeg_cmd[ffmpeg_cmd.index("-t") + 1] == "60.0"
+
+
+@pytest.mark.asyncio
+async def test_job_pipeline_preview_iso_execution(tmp_path, monkeypatch):
+    manager = JobManager()
+    manager.jobs.clear()
+    media_file = str(tmp_path / "movie.mkv")
+    with open(media_file, "w") as f:
+        f.write("dummy")
+
+    scratch_dir = str(tmp_path / "scratch")
+    output_dir = str(tmp_path / "output")
+
+    async def fake_probe(path):
+        return MediaInfo(
+            path=path,
+            filename="movie.mkv",
+            duration_sec=3600.0,
+            width=1920,
+            height=1080,
+            aspect_ratio="16:9",
+            frame_rate=23.976,
+            video_codec="h264",
+            size_bytes=1000000,
+        )
+
+    monkeypatch.setattr("dvdcompress.job_manager.probe_media_file", fake_probe)
+
+    class FakeProc:
+        returncode = 0
+        async def wait(self): return 0
+        @property
+        def stderr(self):
+            class Stream:
+                async def read(self, n): return b""
+            return Stream()
+        def send_signal(self, sig): pass
+        def kill(self): pass
+
+    async def fake_exec(*cmd, **kwargs):
+        return FakeProc()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+
+    job_id = manager.create_job(
+        input_files=[media_file],
+        disc_type=DiscType.DVD5,
+        output_mode=OutputMode.PREVIEW_ISO,
+        output_name="test_iso_preview",
+    )
+
+    await manager.start_job(job_id, scratch_dir=scratch_dir, output_dir=output_dir)
+    task = manager.active_tasks[job_id]
+    await task
+
+    job = manager.get_job(job_id)
+    assert job.stage == JobStage.COMPLETED
+    assert job.output_iso_path == os.path.join(output_dir, "preview_test_iso_preview.iso")
+

@@ -270,13 +270,36 @@ class JobManager:
                 DiscType.BD100,
                 DiscType.BD128,
             )
+            is_preview = job.output_mode in (
+                OutputMode.PREVIEW_VIDEO,
+                OutputMode.PREVIEW_ISO,
+            )
             transcoded_files = []
 
             for idx, info in enumerate(media_infos):
                 job.current_file_idx = idx + 1
                 out_ext = ".m2ts" if is_bluray else ".mpg"
-                out_file = os.path.join(work_dir, f"title_{idx+1}{out_ext}")
+                
+                # If preview_video, write directly to output_dir
+                if job.output_mode == OutputMode.PREVIEW_VIDEO:
+                    clean_name = (
+                        job.output_name
+                        if job.output_name.startswith("preview_")
+                        else f"preview_{job.output_name}"
+                    )
+                    out_file = os.path.join(output_dir, f"{clean_name}{out_ext}")
+                else:
+                    out_file = os.path.join(work_dir, f"title_{idx+1}{out_ext}")
                 transcoded_files.append(out_file)
+
+                # Compute seek and duration for preview
+                seek_sec: Optional[float] = None
+                dur_sec: Optional[float] = None
+                if is_preview:
+                    seek_sec = max(0.0, (info.duration_sec / 2.0) - 30.0) if info.duration_sec > 60.0 else 0.0
+                    dur_sec = min(60.0, info.duration_sec) if info.duration_sec > 0 else 60.0
+
+                effective_duration = dur_sec if (is_preview and dur_sec) else info.duration_sec
 
                 if is_bluray:
                     cmd = build_bluray_transcode_command(
@@ -284,6 +307,8 @@ class JobManager:
                         output_m2ts=out_file,
                         video_bitrate_kbps=budget.video_bitrate_kbps,
                         use_gpu=job.use_gpu,
+                        seek_start_sec=seek_sec,
+                        duration_sec=dur_sec,
                     )
                 else:
                     cmd = build_dvd_transcode_command(
@@ -293,6 +318,8 @@ class JobManager:
                         tv_standard=job.tv_standard,
                         aspect_ratio=job.aspect_ratio,
                         use_gpu=job.use_gpu,
+                        seek_start_sec=seek_sec,
+                        duration_sec=dur_sec,
                     )
 
                 self.log(job_id, f"Transcoding [{idx+1}/{len(media_infos)}]: {info.filename}")
@@ -323,14 +350,15 @@ class JobManager:
                                 job.fps = prog["fps"]
                             if "speed" in prog:
                                 job.speed = prog["speed"]
-                            if info.duration_sec > 0 and "time_sec" in prog:
-                                file_pct = min(100.0, (prog["time_sec"] / info.duration_sec) * 100.0)
+                            if effective_duration > 0 and "time_sec" in prog:
+                                file_pct = min(100.0, (prog["time_sec"] / effective_duration) * 100.0)
                                 job.stage_percent = round(file_pct, 1)
-                                overall_pct = ((idx + (file_pct / 100.0)) / len(media_infos)) * 60.0
+                                overall_multiplier = 100.0 if job.output_mode == OutputMode.PREVIEW_VIDEO else 60.0
+                                overall_pct = ((idx + (file_pct / 100.0)) / len(media_infos)) * overall_multiplier
                                 job.progress_percent = round(overall_pct, 1)
 
                                 # Calculate live ETA
-                                rem_sec = max(0.0, info.duration_sec - prog["time_sec"])
+                                rem_sec = max(0.0, effective_duration - prog["time_sec"])
                                 try:
                                     speed_num = float(job.speed.rstrip("x")) if job.speed else 1.0
                                     speed_num = max(0.1, speed_num)
@@ -352,6 +380,17 @@ class JobManager:
                 if proc.returncode != 0 and job.stage != JobStage.CANCELLED:
                     raise RuntimeError(f"Transcoding failed for {info.filename}")
 
+            # If PREVIEW_VIDEO, pipeline completes here
+            if job.output_mode == OutputMode.PREVIEW_VIDEO:
+                job.stage = JobStage.COMPLETED
+                job.progress_percent = 100.0
+                job.stage_percent = 100.0
+                job.output_iso_path = transcoded_files[0] if transcoded_files else None
+                self.log(job_id, f"Sample video preview completed: {job.output_iso_path}")
+                await self.broadcast(job_id)
+                await self._auto_resume_next_job(job_id)
+                return
+
             # Check pause before authoring
             if job_id in self.pause_events:
                 await self.pause_events[job_id].wait()
@@ -368,7 +407,9 @@ class JobManager:
             # Build chapter list for each title
             chapters_list = []
             for info in media_infos:
-                if info.chapter_times and len(info.chapter_times) >= 2:
+                if is_preview:
+                    chaps = [0.0]
+                elif info.chapter_times and len(info.chapter_times) >= 2:
                     chaps = info.chapter_times
                 else:
                     # Generate automatic 5-minute chapters across the entire movie duration
@@ -429,15 +470,24 @@ class JobManager:
             # 4. ISO Creation
             job.stage = JobStage.MASTERING_ISO
             job.progress_percent = 85.0
-            iso_path = os.path.join(output_dir, f"{job.output_name}.iso")
+            clean_iso_name = (
+                (
+                    job.output_name
+                    if job.output_name.startswith("preview_")
+                    else f"preview_{job.output_name}"
+                )
+                if job.output_mode == OutputMode.PREVIEW_ISO
+                else job.output_name
+            )
+            iso_path = os.path.join(output_dir, f"{clean_iso_name}.iso")
             job.output_iso_path = iso_path
             self.log(job_id, f"Building ISO: {iso_path}")
             await self.broadcast(job_id)
 
             if is_bluray:
-                iso_cmd = build_xorriso_bd_command(author_dir, iso_path, job.output_name)
+                iso_cmd = build_xorriso_bd_command(author_dir, iso_path, clean_iso_name)
             else:
-                iso_cmd = build_genisoimage_command(author_dir, iso_path, job.output_name)
+                iso_cmd = build_genisoimage_command(author_dir, iso_path, clean_iso_name)
 
             proc = await asyncio.create_subprocess_exec(*iso_cmd)
             current_process = proc
@@ -448,6 +498,16 @@ class JobManager:
                 del self.active_processes[job_id]
             if proc.returncode != 0:
                 raise RuntimeError("ISO creation failed")
+
+            # If PREVIEW_ISO, pipeline completes here
+            if job.output_mode == OutputMode.PREVIEW_ISO:
+                job.stage = JobStage.COMPLETED
+                job.progress_percent = 100.0
+                job.stage_percent = 100.0
+                self.log(job_id, f"Sample ISO preview completed: {iso_path}")
+                await self.broadcast(job_id)
+                await self._auto_resume_next_job(job_id)
+                return
 
             # 5. Burning (Optional)
             if job.output_mode in (OutputMode.BURN_DIRECT, OutputMode.AUTHOR_AND_BURN) and job.burner_device:
