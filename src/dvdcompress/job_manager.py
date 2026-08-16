@@ -56,6 +56,7 @@ class Job(BaseModel):
     burner_device: Optional[str] = None
     burn_speed: int = 4
     use_gpu: bool = True
+    passthrough: bool = False
     selected_subtitle_indices: Optional[List[int]] = None
 
     current_file_idx: int = 0
@@ -95,6 +96,7 @@ class JobManager:
         burner_device: Optional[str] = None,
         burn_speed: int = 4,
         use_gpu: bool = True,
+        passthrough: bool = False,
         selected_subtitle_indices: Optional[List[int]] = None,
     ) -> str:
         job_id = str(uuid.uuid4())[:8]
@@ -111,6 +113,7 @@ class JobManager:
             burner_device=burner_device,
             burn_speed=burn_speed,
             use_gpu=use_gpu,
+            passthrough=passthrough,
             selected_subtitle_indices=selected_subtitle_indices,
             total_files=len(input_files),
         )

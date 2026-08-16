@@ -506,3 +506,27 @@ def test_api_jobs_with_selected_subtitles(tmp_path, monkeypatch):
     assert job.selected_subtitle_indices == [2, 3]
 
 
+def test_api_jobs_with_passthrough_toggle(tmp_path, monkeypatch):
+    test_media = tmp_path / "remux.mkv"
+    test_media.write_bytes(b"dummy")
+
+    async def fake_start(job_id, scratch_dir, output_dir):
+        pass
+
+    monkeypatch.setattr(job_manager, "start_job", fake_start)
+
+    resp = client.post("/api/jobs", json={
+        "input_files": [str(test_media)],
+        "disc_type": "bd66",
+        "output_mode": "iso_only",
+        "output_name": "uhd_passthrough",
+        "passthrough": True,
+    })
+    assert resp.status_code == 200
+    job_id = resp.json()["job_id"]
+    job = job_manager.get_job(job_id)
+    assert job is not None
+    assert job.passthrough is True
+
+
+
