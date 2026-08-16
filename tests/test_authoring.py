@@ -84,3 +84,49 @@ def test_iso_label_sanitization():
     assert len(sanitized) <= 32
     assert sanitized == "MY_SUPER_MOVIE_NAME__2026__EXTEN"
     assert all(c.isalnum() or c == '_' for c in sanitized)
+
+
+def test_build_subtitle_extraction_command():
+    from dvdcompress.authoring import build_subtitle_extraction_command
+
+    # Text subtitle extraction (to .srt)
+    cmd_text = build_subtitle_extraction_command(
+        input_file="/media/movie.mkv",
+        stream_index=2,
+        output_sub_path="/tmp/sub.srt",
+        is_bitmap=False,
+    )
+    assert cmd_text == ["ffmpeg", "-y", "-i", "/media/movie.mkv", "-map", "0:2", "/tmp/sub.srt"]
+
+    # Bitmap PGS subtitle extraction (to .sup)
+    cmd_bitmap = build_subtitle_extraction_command(
+        input_file="/media/movie.mkv",
+        stream_index=3,
+        output_sub_path="/tmp/sub.sup",
+        is_bitmap=True,
+    )
+    assert cmd_bitmap == ["ffmpeg", "-y", "-i", "/media/movie.mkv", "-map", "0:3", "-c:s", "copy", "/tmp/sub.sup"]
+
+
+def test_generate_tsmuxer_meta_with_subtitles():
+    subs = [
+        {"path": "/tmp/sub1.srt", "lang": "eng", "is_bitmap": False},
+        {"path": "/tmp/sub2.sup", "lang": "spa", "is_bitmap": True},
+    ]
+    meta = generate_tsmuxer_meta(
+        video_files=["/tmp/track1.m2ts"],
+        subtitle_files=subs,
+    )
+    assert 'S_TEXT/UTF8, "/tmp/sub1.srt", font-name="Arial", font-size=65, font-color=0x00ffffff, bottom-offset=24, lang=eng' in meta
+    assert 'S_HDMV/PGS, "/tmp/sub2.sup", lang=spa' in meta
+
+
+def test_generate_dvdauthor_xml_with_subpictures():
+    xml = generate_dvdauthor_xml(
+        titles_mpg=["/tmp/title1.mpg"],
+        chapters_sec=[[0.0, 300.0]],
+        subtitles_lang=["eng", "spa"],
+    )
+    assert '<subpicture lang="en" />' in xml
+    assert '<subpicture lang="es" />' in xml
+

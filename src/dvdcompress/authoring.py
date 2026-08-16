@@ -1,6 +1,6 @@
 """Disc authoring specification and metadata generators for dvdauthor and tsMuxeR."""
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from dvdcompress.models import MenuMode, TVStandard
 
 
@@ -10,6 +10,58 @@ def format_chapter_time(seconds: float) -> str:
     m = int((seconds % 3600) // 60)
     s = seconds % 60
     return f"{h:02d}:{m:02d}:{s:06.3f}"
+
+
+def build_subtitle_extraction_command(
+    input_file: str,
+    stream_index: int,
+    output_sub_path: str,
+    is_bitmap: bool = False,
+) -> List[str]:
+    """Build FFmpeg command to extract a subtitle stream to .srt (text) or .sup (bitmap PGS)."""
+    cmd = ["ffmpeg", "-y", "-i", input_file, "-map", f"0:{stream_index}"]
+    if is_bitmap:
+        cmd.extend(["-c:s", "copy"])
+    cmd.append(output_sub_path)
+    return cmd
+
+
+ISO_639_2_TO_1 = {
+    "eng": "en",
+    "spa": "es",
+    "fre": "fr",
+    "fra": "fr",
+    "ger": "de",
+    "deu": "de",
+    "ita": "it",
+    "jpn": "ja",
+    "chi": "zh",
+    "zho": "zh",
+    "rus": "ru",
+    "por": "pt",
+    "kor": "ko",
+    "dut": "nl",
+    "nld": "nl",
+    "swe": "sv",
+    "nor": "no",
+    "dan": "da",
+    "fin": "fi",
+    "pol": "pl",
+    "cze": "cs",
+    "ces": "cs",
+}
+
+
+def normalize_lang_code_2(lang: Optional[str]) -> str:
+    """Normalize language string to 2-letter ISO 639-1 code for DVD subpictures."""
+    if not lang:
+        return "en"
+    l_lower = lang.strip().lower()
+    if l_lower in ISO_639_2_TO_1:
+        return ISO_639_2_TO_1[l_lower]
+    if len(l_lower) == 2:
+        return l_lower
+    return l_lower[:2]
 
 
 def generate_dvdauthor_xml(
@@ -33,7 +85,7 @@ def generate_dvdauthor_xml(
 
     if subtitles_lang:
         for lang in subtitles_lang:
-            clean_lang = lang[:2].lower() if lang and len(lang) >= 2 else "en"
+            clean_lang = normalize_lang_code_2(lang)
             xml_lines.append(f'      <subpicture lang="{clean_lang}" />')
 
     for idx, mpg in enumerate(titles_mpg):
@@ -64,6 +116,7 @@ def generate_dvdauthor_xml(
 def generate_tsmuxer_meta(
     video_files: List[str],
     chapters_sec: Optional[List[float]] = None,
+    subtitle_files: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """Generate tsMuxeR .meta file content for Blu-ray BDMV muxing."""
     if chapters_sec and len(chapters_sec) > 0:
@@ -78,4 +131,18 @@ def generate_tsmuxer_meta(
     for vf in video_files:
         meta_lines.append(f'V_MPEG4/ISO/AVC, "{vf}", fps=23.976, insertSEI, contSPS')
         meta_lines.append(f'A_AC3, "{vf}"')
+
+    if subtitle_files:
+        for sub in subtitle_files:
+            sub_path = sub.get("path")
+            lang = sub.get("lang", "eng")
+            is_bitmap = sub.get("is_bitmap", False)
+            if is_bitmap:
+                meta_lines.append(f'S_HDMV/PGS, "{sub_path}", lang={lang}')
+            else:
+                meta_lines.append(
+                    f'S_TEXT/UTF8, "{sub_path}", font-name="Arial", font-size=65, font-color=0x00ffffff, bottom-offset=24, lang={lang}'
+                )
+
     return "\n".join(meta_lines)
+
