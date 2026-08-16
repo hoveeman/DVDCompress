@@ -342,6 +342,13 @@ class JobManager:
                 audio_idx = first_audio.index if first_audio else 1
                 audio_ch = first_audio.channels if first_audio else (6 if is_bluray else 2)
 
+                target_sub_indices = None
+                if not is_bluray and info.subtitle_streams:
+                    if job.selected_subtitle_indices is not None:
+                        target_sub_indices = [s.index for s in info.subtitle_streams if s.index in job.selected_subtitle_indices]
+                    else:
+                        target_sub_indices = [s.index for s in info.subtitle_streams]
+
                 if is_bluray:
                     cmd = build_bluray_transcode_command(
                         input_file=info.path,
@@ -365,6 +372,7 @@ class JobManager:
                         aspect_ratio=job.aspect_ratio,
                         use_gpu=job.use_gpu,
                         is_hdr=info.is_hdr,
+                        subtitle_indices=target_sub_indices,
                         seek_start_sec=seek_sec,
                         duration_sec=dur_sec,
                     )
