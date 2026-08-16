@@ -226,5 +226,22 @@ def test_hable_tonemapping_filtergraph_for_hdr():
     assert "tonemap=hable" not in dvd_sdr_str
 
 
+def test_dvd_transcode_maps_only_video_and_audio():
+    """Verify that DVD transcode maps only video 0:v:0 and audio 0:a, never subtitles."""
+    cmd = build_dvd_transcode_command(
+        input_file="/media/movie_with_subs.mkv",
+        output_mpg="/output/movie.mpg",
+        video_bitrate_kbps=5400,
+        audio_stream_idx=1,
+        audio_channels=6,
+    )
+    cmd_str = " ".join(cmd)
+    assert "-map 0:v:0" in cmd_str
+    assert "-map 0:1" in cmd_str
+    assert "-map 0:2" not in cmd_str
+    assert "-map 0:s" not in cmd_str
+
+
+
 
 

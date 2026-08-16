@@ -16,7 +16,6 @@ def build_dvd_transcode_command(
     aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9,
     use_gpu: bool = False,
     is_hdr: bool = False,
-    subtitle_indices: Optional[List[int]] = None,
     seek_start_sec: Optional[float] = None,
     duration_sec: Optional[float] = None,
 ) -> List[str]:
@@ -32,7 +31,6 @@ def build_dvd_transcode_command(
         aspect_ratio: Display aspect ratio (16:9 or 4:3).
         use_gpu: Enable CUDA hardware acceleration for decoding.
         is_hdr: Enable HDR to SDR color matrix adaptation.
-        subtitle_indices: Optional list of stream indices for subtitle tracks.
         seek_start_sec: Optional seek start timestamp in seconds for preview clipping.
         duration_sec: Optional duration in seconds for preview clipping.
 
@@ -55,10 +53,6 @@ def build_dvd_transcode_command(
     # Video stream mapping and audio mapping
     cmd.extend(["-map", "0:v:0"])
     cmd.extend(["-map", f"0:{audio_stream_idx}"])
-
-    if subtitle_indices:
-        for sub_idx in subtitle_indices:
-            cmd.extend(["-map", f"0:{sub_idx}"])
 
     is_ntsc = tv_standard in (TVStandard.NTSC, TVStandard.AUTO)
     target = "ntsc-dvd" if is_ntsc else "pal-dvd"
