@@ -21,6 +21,7 @@
       burner_device: '',
       burn_speed: 4,
       use_gpu: true,
+      passthrough: false,
     },
     preview: {
       preview_mode: 'preview_video',
@@ -214,6 +215,14 @@
         if (desc) {
           desc.textContent = e.target.checked ? 'NVIDIA NVENC / CUDA' : 'CPU (libx264 / libavcodec)';
         }
+      });
+    }
+
+    // Direct Stream Passthrough Toggle
+    const passthroughToggle = document.getElementById('toggle-passthrough');
+    if (passthroughToggle) {
+      passthroughToggle.addEventListener('change', (e) => {
+        state.config.passthrough = e.target.checked;
       });
     }
 
@@ -935,6 +944,7 @@
       burner_device: state.config.burner_device || null,
       burn_speed: state.config.burn_speed || 4,
       use_gpu: state.config.use_gpu,
+      passthrough: state.config.passthrough,
       selected_subtitle_indices: selectedSubtitleIndices,
     };
 
@@ -1109,6 +1119,7 @@
       aspect_ratio: state.config.aspect_ratio,
       menu_mode: state.config.menu_mode,
       use_gpu: state.config.use_gpu,
+      passthrough: state.config.passthrough,
       selected_subtitle_indices: selectedSubtitleIndices,
     };
 

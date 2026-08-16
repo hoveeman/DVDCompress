@@ -148,5 +148,20 @@ def test_subtitle_ui_elements_in_app_js():
     assert "selected_subtitle_indices" in js
 
 
+def test_passthrough_ui_elements():
+    # 1. HTML Toggle Switch
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    assert "toggle-passthrough" in res_html.text
+    assert "Direct Passthrough" in res_html.text
+
+    # 2. JavaScript Wiring
+    res_js = client.get("/js/app.js")
+    assert res_js.status_code == 200
+    assert "toggle-passthrough" in res_js.text
+    assert "passthrough" in res_js.text
+
+
+
 
 
