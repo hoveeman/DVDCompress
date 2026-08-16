@@ -2,17 +2,16 @@
 
 <div align="center">
 
-![DVDCompress Banner](https://raw.githubusercontent.com/placeholder/dvdcompress/main/docs/banner.png)
-
 **Hardware-Accelerated DVD-Video & Blu-ray Transcoding, Authoring, and Burning in Docker**
 
-[![Docker Image](https://img.shields.io/badge/docker-ready-blue.svg?logo=docker&logoColor=white)](https://hub.docker.com)
+[![Docker Pulls](https://img.shields.io/docker/pulls/hovee/dvdcompress)](https://hub.docker.com/r/hovee/dvdcompress)
+[![Docker Image Size](https://img.shields.io/docker/image-size/hovee/dvdcompress)](https://hub.docker.com/r/hovee/dvdcompress)
 [![CUDA Version](https://img.shields.io/badge/CUDA-12.4.1-76B900.svg?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda-toolkit)
 [![Python Version](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Deployment](#-deployment-guides) • [Hardware Acceleration](#-hardware-acceleration) • [Optical Burning](#-optical-drive-pass-through) • [API & Architecture](#-architecture--api)
+[Features](#-features) • [Quick Start](#-quick-start) • [Deployment](#-deployment-guides) • [Hardware Acceleration](#-hardware-acceleration) • [Optical Burning](#-optical-drive-pass-through) • [API Reference](#-rest-api--websocket-reference)
 
 </div>
 
@@ -22,7 +21,7 @@
 
 **DVDCompress** is an open-source, self-hosted web application that transforms arbitrary modern video files (`.mp4`, `.mkv`, `.avi`, `.mov`, `.ts`, `.webm`, etc.) into 100% standard-compliant, standalone-playable **DVD-Video** (`VIDEO_TS`) and **Blu-ray** (`BDMV`) physical discs or ISO images.
 
-Equipped with a real-time mathematical bitrate budget calculator, NVIDIA GPU decode/encode acceleration, automatic optical drive discovery, and a responsive web interface, DVDCompress eliminates the complexity of optical authoring on modern home servers and NAS systems.
+Equipped with a real-time mathematical bitrate budget calculator, NVIDIA GPU decode/encode acceleration, automatic optical drive discovery, pause/resume queue management, and a modern responsive web interface, DVDCompress eliminates the complexity of optical authoring on home servers, Unraid, TrueNAS, and NAS systems.
 
 ---
 
@@ -34,13 +33,19 @@ Equipped with a real-time mathematical bitrate budget calculator, NVIDIA GPU dec
   - **DVD-9 (Dual Layer):** 7.85 GiB target budget (~7,850 MB)
   - **BD-25 (Single Layer Blu-ray):** 23.00 GiB target budget (~23,000 MB)
   - **BD-50 (Dual Layer Blu-ray):** 46.00 GiB target budget (~46,000 MB)
+  - **BD-66 (Dual Layer UHD):** 61.50 GiB target budget (~61,500 MB)
+  - **BD-100 (Triple Layer BDXL):** 92.00 GiB target budget (~92,000 MB)
+  - **BD-128 (Quad Layer BDXL):** 118.00 GiB target budget (~118,000 MB)
 - 📀 **Standard-Compliant Authoring:**
-  - **DVD-Video:** MPEG-2 video (NTSC 720×480 @ 29.97fps / PAL 720×576 @ 25fps), 48kHz AC3 audio, `dvdauthor` VTS titlesets, automatic 16:9 widescreen anamorphic / 4:3 letterboxing, and chapter point preservation.
+  - **DVD-Video:** MPEG-2 video (NTSC 720×480 @ 29.97fps / PAL 720×576 @ 25fps), 48kHz AC3 audio, `dvdauthor` VTS titlesets, 16:9 widescreen anamorphic / 4:3 aspect ratios, and selectable subtitle tracks.
   - **Blu-ray (BDMV):** H.264/AVC High Profile Level 4.1, `tsMuxeR` BDMV/CERTIFICATE structures, and UDF 2.50 formatting.
+- 💬 **Subtitle Preservation:** Automatically converts PGS and SRT subtitle streams into compliant DVD subpictures (`dvdsub`), selectable using standard remote control subtitle toggles.
+- ⏭️ **Full-Movie Chapters:** Preserves embedded chapter markers from source files, or automatically creates 5-minute interval chapters across the entire movie duration.
 - ⚡ **Hardware Acceleration:** Full NVIDIA NVDEC hardware decode for all common formats, NVIDIA NVENC hardware encoding for Blu-ray streams, and multi-core CPU matrix-optimized transcoding with automatic fallback.
+- ⏸️ **Pause / Resume Queue Controls:** Suspend in-progress transcoding or burning jobs on the fly. When a running job completes, DVDCompress automatically picks up and resumes the next queued job.
 - 🔥 **Direct Optical Disc Burning:** Real-time SCSI/SATA/USB optical drive detection (`/dev/sr*`, `/dev/sg*`), disc media status inspection, and rock-solid burning with buffer underrun protection via `growisofs` and `cdrskin`/`xorriso`.
-- 🌐 **Modern Real-Time Web Interface:** Live WebSocket pipeline monitoring, interactive media directory navigation, real-time transcoding FPS/ETA telemetry, hardware GPU status gauges, and integrated log terminal stream.
-- 💿 **Standalone ISO Burner:** Quickly burn existing ISO files directly to disc with custom burn speeds.
+- 🌐 **Modern Real-Time Web Interface:** Live WebSocket pipeline monitoring, interactive media directory navigation, real-time transcoding FPS/speed/ETA telemetry, live CPU, RAM, and GPU/VRAM gauges, and integrated log terminal stream.
+- 💿 **Standalone ISO Burner:** Quickly burn existing ISO files directly to disc with customizable burn speeds.
 
 ---
 
@@ -53,8 +58,8 @@ Equipped with a real-time mathematical bitrate budget calculator, NVIDIA GPU dec
 |  +-----------------------+     +-------------------------------------+  |
 |  |     Modern Web UI     | <-> | FastAPI Application Server (Python) |  |
 |  |  (HTML5/CSS/Vanilla)  |     |  - REST API & WebSocket Handler     |  |
-|  +-----------------------+     |  - Async Job Pipeline Engine        |  |
-|                                +-------------------------------------+  |
+|  |  - Telemetry Chips    |     |  - Async Job Pipeline & Queue       |  |
+|  +-----------------------+     +-------------------------------------+  |
 |                                                   |                     |
 |           +---------------------------------------+                     |
 |           |                   |                   |                     |
@@ -84,11 +89,14 @@ Equipped with a real-time mathematical bitrate budget calculator, NVIDIA GPU dec
 Create a `docker-compose.yml` file:
 
 ```yaml
+version: '3.8'
+
 services:
   dvdcompress:
-    image: dvdcompress:latest
+    image: hovee/dvdcompress:latest
     container_name: dvdcompress
     restart: unless-stopped
+    privileged: true
     ports:
       - "8080:8080"
     environment:
@@ -98,9 +106,9 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=all,video,compute,utility
     volumes:
       - /path/to/your/media:/media:ro
-      - /path/to/your/output:/output
-      - /path/to/your/config:/config
-      - /path/to/your/temp:/tmp/dvdcompress
+      - /path/to/your/output:/output:rw
+      - /path/to/your/config:/config:rw
+      - /path/to/your/temp:/tmp/dvdcompress:rw
     devices:
       - /dev/sr0:/dev/sr0
       - /dev/sg0:/dev/sg0
@@ -129,16 +137,17 @@ Open your browser and navigate to: **`http://<your-server-ip>:8080`**
 docker run -d \
   --name dvdcompress \
   --restart unless-stopped \
+  --privileged \
   --gpus all \
   --device /dev/sr0:/dev/sr0 \
   --device /dev/sg0:/dev/sg0 \
   -p 8080:8080 \
   -v /mnt/media:/media:ro \
-  -v /mnt/dvd_output:/output \
-  -v /mnt/appdata/dvdcompress:/config \
-  -v /tmp/dvdcompress:/tmp/dvdcompress \
+  -v /mnt/dvd_output:/output:rw \
+  -v /mnt/appdata/dvdcompress:/config:rw \
+  -v /tmp/dvdcompress:/tmp/dvdcompress:rw \
   -e TZ=UTC \
-  dvdcompress:latest
+  hovee/dvdcompress:latest
 ```
 
 #### CPU-Only Mode
@@ -146,15 +155,16 @@ docker run -d \
 docker run -d \
   --name dvdcompress \
   --restart unless-stopped \
+  --privileged \
   --device /dev/sr0:/dev/sr0 \
   --device /dev/sg0:/dev/sg0 \
   -p 8080:8080 \
   -v /mnt/media:/media:ro \
-  -v /mnt/dvd_output:/output \
-  -v /mnt/appdata/dvdcompress:/config \
-  -v /tmp/dvdcompress:/tmp/dvdcompress \
+  -v /mnt/dvd_output:/output:rw \
+  -v /mnt/appdata/dvdcompress:/config:rw \
+  -v /tmp/dvdcompress:/tmp/dvdcompress:rw \
   -e TZ=UTC \
-  dvdcompress:latest
+  hovee/dvdcompress:latest
 ```
 
 ---
@@ -163,31 +173,26 @@ docker run -d \
 
 ### Unraid OS
 1. Install the **NVIDIA Driver** plugin from Community Applications (if using an NVIDIA GPU).
-2. Add a new Docker Container in Unraid:
-   - **Repository:** `dvdcompress:latest`
+2. Add a new Docker Container in Unraid (or use the included `unraid-template.xml`):
+   - **Repository:** `hovee/dvdcompress:latest`
    - **WebUI:** `http://[IP]:[PORT:8080]`
    - **Port:** `8080` $\rightarrow$ `8080`
    - **Path 1 (Media):** `/mnt/user/media` $\rightarrow$ `/media` (Read-only)
-   - **Path 2 (Output):** `/mnt/user/data/ISOs` $\rightarrow$ `/output` (Read/Write)
+   - **Path 2 (Output):** `/mnt/user/data/dvd_output` $\rightarrow$ `/output` (Read/Write)
    - **Path 3 (Config):** `/mnt/user/appdata/dvdcompress` $\rightarrow$ `/config`
-   - **Path 4 (Scratch):** `/tmp/dvdcompress` $\rightarrow$ `/tmp/dvdcompress`
    - **Device 1:** `/dev/sr0` $\rightarrow$ `/dev/sr0`
    - **Device 2:** `/dev/sg0` $\rightarrow$ `/dev/sg0`
+   - **Privileged:** `ON`
    - **Extra Parameters:** `--gpus all --runtime=nvidia`
    - **Variables:** `NVIDIA_VISIBLE_DEVICES` = `all`, `NVIDIA_DRIVER_CAPABILITIES` = `all,video,compute,utility`
 
 ### TrueNAS SCALE
 1. Go to **Apps** $\rightarrow$ **Launch Docker Image** (or Custom App).
-2. Configure Image: `dvdcompress:latest`.
+2. Configure Image: `hovee/dvdcompress:latest`.
 3. Set Port Forwarding: Host Port `8080` to Container Port `8080`.
 4. Configure Host Path Storage Volumes for `/media`, `/output`, `/config`, and `/tmp/dvdcompress`.
 5. Under **GPU Resource Allocation**, allocate 1 NVIDIA GPU.
-6. Under **Device Passthrough**, add `/dev/sr0` and `/dev/sg0`.
-
-### Synology DSM (Container Manager)
-1. Open **Container Manager** $\rightarrow$ **Project** $\rightarrow$ **Create**.
-2. Paste the `docker-compose.yml` configuration.
-3. If running via Task Scheduler / SSH with optical drive access, pass `--device /dev/sr0:/dev/sr0 --device /dev/sg0:/dev/sg0`.
+6. Under **Device Passthrough**, add `/dev/sr0` and `/dev/sg0` with Privileged access enabled.
 
 ---
 
@@ -202,9 +207,6 @@ DVDCompress utilizes NVIDIA CUDA and NVDEC/NVENC to accelerate media transcoding
 | **Blu-ray Transcode** | `h264_nvenc` Hardware Encoder | `libx264` High Profile Level 4.1 |
 | **Audio Processing** | Multi-channel AC3 encoder (Stereo / 5.1) | Multi-channel AC3 encoder |
 
-> [!NOTE]
-> Ensure the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) is installed on your host system for GPU passthrough.
-
 ---
 
 ## 💿 Optical Drive Pass-Through
@@ -214,14 +216,12 @@ To enable physical disc burning from inside Docker, pass both the optical block 
 1. **Identify connected optical drives on the host:**
    ```bash
    lsscsi -k
-   # Example output: [2:0:0:0] cd/dvd HL-DT-ST BD-RE WH16NS40 /dev/sr0 /dev/sg0
+   # Example output: [2:0:0:0] cd/dvd ASUS BW-16D1HT /dev/sr0 /dev/sg0
    ```
 
 2. **Verify host permissions:**
    ```bash
    ls -l /dev/sr0 /dev/sg0
-   # If necessary, add container user or chmod:
-   sudo usermod -aG cdrom $USER
    ```
 
 3. **Pass devices to container:**
@@ -233,30 +233,17 @@ To enable physical disc burning from inside Docker, pass both the optical block 
 
 ---
 
-## ⚙️ Configuration & Environment Variables
-
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `DVDCOMPRESS_HOST` / `HOST` | `0.0.0.0` | IP interface to bind the FastAPI web server |
-| `DVDCOMPRESS_PORT` / `PORT` | `8080` | Web server listening port |
-| `DVDCOMPRESS_MEDIA_DIR` / `MEDIA_DIR` | `/media` | Base directory for scanning source video files |
-| `DVDCOMPRESS_OUTPUT_DIR` / `OUTPUT_DIR` | `/output` | Destination directory for generated ISO files |
-| `DVDCOMPRESS_CONFIG_DIR` / `CONFIG_DIR` | `/config` | Application persistent storage and configuration |
-| `DVDCOMPRESS_TEMP_DIR` / `TEMP_DIR` | `/tmp/dvdcompress` | Working scratch directory for transcode buffers |
-| `DVDCOMPRESS_LOG_LEVEL` / `LOG_LEVEL` | `INFO` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
-| `NVIDIA_VISIBLE_DEVICES` | `all` | Controls which GPUs are visible to the container |
-| `NVIDIA_DRIVER_CAPABILITIES` | `all,video,compute,utility` | Enables NVENC/NVDEC driver capabilities in container |
-
----
-
 ## 📊 Technical Specifications & Capacities
 
 | Disc Format | Physical Type | Target Capacity | Usable Budget | Max Video Bitrate | Audio Spec | Video Standard |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **DVD-5** | Single Layer | 4.7 GB | 4,300 MB | 8,000 kbps | AC3 Stereo/5.1 (48kHz) | MPEG-2 (NTSC 720×480 / PAL 720×576) |
 | **DVD-9** | Dual Layer | 8.5 GB | 7,850 MB | 8,000 kbps | AC3 Stereo/5.1 (48kHz) | MPEG-2 (NTSC 720×480 / PAL 720×576) |
-| **BD-25** | Single Layer | 25.0 GB | 23,000 MB | 35,000 kbps | AC3 Stereo/5.1 or PCM | H.264/AVC High@L4.1 (1080p/1080i/720p) |
-| **BD-50** | Dual Layer | 50.0 GB | 46,000 MB | 35,000 kbps | AC3 Stereo/5.1 or PCM | H.264/AVC High@L4.1 (1080p/1080i/720p) |
+| **BD-25** | Single Layer | 25.0 GB | 23,000 MB | 35,000 kbps | AC3 Stereo/5.1 | H.264/AVC High@L4.1 (1080p) |
+| **BD-50** | Dual Layer | 50.0 GB | 46,000 MB | 35,000 kbps | AC3 Stereo/5.1 | H.264/AVC High@L4.1 (1080p) |
+| **BD-66** | Dual Layer UHD | 66.0 GB | 61,500 MB | 35,000 kbps | AC3 Stereo/5.1 | H.264 / HEVC UHD-BD |
+| **BD-100** | Triple Layer BDXL | 100.0 GB | 92,000 MB | 35,000 kbps | AC3 Stereo/5.1 | H.264 / HEVC BDXL |
+| **BD-128** | Quad Layer BDXL | 128.0 GB | 118,000 MB | 35,000 kbps | AC3 Stereo/5.1 | H.264 / HEVC BDXL |
 
 ---
 
@@ -266,14 +253,16 @@ DVDCompress provides a full REST and WebSocket API:
 
 - `GET /api/health` — Application health check
 - `GET /api/files?path=/media/...` — File browser listing playable video files and ISOs
-- `POST /api/probe` — FFprobe media analysis (duration, codec, resolution, audio streams, chapters)
+- `POST /api/probe` — FFprobe media analysis (duration, codec, resolution, audio streams, chapters, subtitles)
 - `POST /api/calculate` — Bitrate budget calculation based on input durations and disc target
 - `GET /api/drives` — Scan host system for optical drives and query disc media presence
-- `GET /api/system` — NVIDIA GPU telemetry (utilization %, VRAM usage, temperature)
+- `GET /api/system` — Live system telemetry (CPU %, RAM used/total, GPU %, VRAM, temp)
 - `POST /api/jobs` — Create and start a transcoding/authoring/burning job
 - `POST /api/burn-iso` — Directly burn an existing ISO file to an optical drive
 - `GET /api/jobs` — Retrieve active and historical jobs
 - `GET /api/jobs/{job_id}` — Get single job progress and telemetry
+- `POST /api/jobs/{job_id}/pause` — Pause an in-progress job
+- `POST /api/jobs/{job_id}/resume` — Resume a paused job
 - `POST /api/jobs/{job_id}/cancel` — Cancel an in-progress job and terminate child processes
 - `WS /ws/jobs/{job_id}` — Real-time bidirectional WebSocket stream for progress updates and live logs
 
@@ -281,27 +270,21 @@ DVDCompress provides a full REST and WebSocket API:
 
 ## 🛠 Local Development & Testing
 
-### Running with uv / virtualenv
 ```bash
 # Clone the repository
-git clone https://github.com/placeholder/dvdcompress.git
+git clone https://github.com/hoveeman/DVDCompress.git
 cd DVDCompress
 
 # Create virtual environment and install dependencies
-uv venv
+python3 -m venv .venv
 source .venv/bin/activate
-uv pip install -e ".[dev]"
+pip install -e ".[dev]"
 
-# Run test suite
+# Run full test suite
 pytest tests/ -v
 
 # Run local development server
 uvicorn dvdcompress.api:app --host 127.0.0.1 --port 8080 --reload
-```
-
-### Building Docker Image Locally
-```bash
-docker build -t dvdcompress:latest .
 ```
 
 ---
