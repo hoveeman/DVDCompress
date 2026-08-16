@@ -33,6 +33,8 @@ from dvdcompress.burner import (
     parse_burn_progress_line,
     parse_lsscsi_output,
 )
+from dvdcompress.system_info import get_hardware_telemetry
+from dvdcompress.job_manager import JobStage, Job, JobManager
 
 __all__ = [
     "DiscType",
@@ -59,6 +61,11 @@ __all__ = [
     "build_burn_command",
     "parse_burn_progress_line",
     "parse_lsscsi_output",
+    "get_hardware_telemetry",
+    "JobStage",
+    "Job",
+    "JobManager",
 ]
+
 
 
