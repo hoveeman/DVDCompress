@@ -217,23 +217,40 @@ class JobManager:
                 )
                 current_process = proc
 
+                buffer = ""
                 while True:
-                    line = await proc.stderr.readline()
-                    if not line:
+                    chunk = await proc.stderr.read(512)
+                    if not chunk:
                         break
-                    decoded = line.decode(errors="replace")
-                    prog = parse_ffmpeg_progress_line(decoded)
-                    if "frame" in prog or "time_sec" in prog:
-                        if "fps" in prog:
-                            job.fps = prog["fps"]
-                        if "speed" in prog:
-                            job.speed = prog["speed"]
-                        if info.duration_sec > 0 and "time_sec" in prog:
-                            file_pct = min(100.0, (prog["time_sec"] / info.duration_sec) * 100.0)
-                            job.stage_percent = round(file_pct, 1)
-                            overall_pct = ((idx + (file_pct / 100.0)) / len(media_infos)) * 60.0
-                            job.progress_percent = round(overall_pct, 1)
-                        await self.broadcast(job_id)
+                    buffer += chunk.decode(errors="replace")
+                    lines = buffer.replace("\r", "\n").split("\n")
+                    buffer = lines[-1]
+                    for line in lines[:-1]:
+                        prog = parse_ffmpeg_progress_line(line)
+                        if "frame" in prog or "time_sec" in prog:
+                            if "fps" in prog:
+                                job.fps = prog["fps"]
+                            if "speed" in prog:
+                                job.speed = prog["speed"]
+                            if info.duration_sec > 0 and "time_sec" in prog:
+                                file_pct = min(100.0, (prog["time_sec"] / info.duration_sec) * 100.0)
+                                job.stage_percent = round(file_pct, 1)
+                                overall_pct = ((idx + (file_pct / 100.0)) / len(media_infos)) * 60.0
+                                job.progress_percent = round(overall_pct, 1)
+
+                                # Calculate live ETA
+                                rem_sec = max(0.0, info.duration_sec - prog["time_sec"])
+                                try:
+                                    speed_num = float(job.speed.rstrip("x")) if job.speed else 1.0
+                                    speed_num = max(0.1, speed_num)
+                                except Exception:
+                                    speed_num = 1.0
+                                eta_sec = int(rem_sec / speed_num)
+                                m, s = divmod(eta_sec, 60)
+                                h, m = divmod(m, 60)
+                                job.eta = f"{h:02d}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
+
+                            await self.broadcast(job_id)
 
                 await proc.wait()
                 current_process = None

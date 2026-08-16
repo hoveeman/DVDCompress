@@ -175,13 +175,11 @@ async def test_job_pipeline_dvd_iso_success(tmp_path):
         def __init__(self, *args, **kwargs):
             self.returncode = 0
             self.stderr = AsyncMock()
-            self.stderr.readline = AsyncMock(
-                side_effect=[
-                    b"frame= 100 fps= 45.0 q=2.0 size= 1024kB time=00:30:00.00 bitrate= 4500kbits/s speed= 2.1x\n",
-                    b"",
-                ]
-            )
+            progress_bytes = b"frame= 100 fps= 45.0 q=2.0 size= 1024kB time=00:30:00.00 bitrate= 4500kbits/s speed= 2.1x\n"
+            self.stderr.read = AsyncMock(side_effect=[progress_bytes, b""])
+            self.stderr.readline = AsyncMock(side_effect=[progress_bytes, b""])
             self.stdout = AsyncMock()
+            self.stdout.read = AsyncMock(return_value=b"")
             self.stdout.readline = AsyncMock(return_value=b"")
 
         async def wait(self):
@@ -261,13 +259,11 @@ async def test_job_pipeline_bluray_burn_success(tmp_path):
         def __init__(self, *args, **kwargs):
             self.returncode = 0
             self.stderr = AsyncMock()
-            self.stderr.readline = AsyncMock(
-                side_effect=[
-                    b"frame= 500 fps= 60.0 q=2.0 size= 5000kB time=01:00:00.00 bitrate= 18000kbits/s speed= 2.5x\n",
-                    b"",
-                ]
-            )
+            progress_bytes = b"frame= 500 fps= 60.0 q=2.0 size= 5000kB time=01:00:00.00 bitrate= 18000kbits/s speed= 2.5x\n"
+            self.stderr.read = AsyncMock(side_effect=[progress_bytes, b""])
+            self.stderr.readline = AsyncMock(side_effect=[progress_bytes, b""])
             self.stdout = AsyncMock()
+            self.stdout.read = AsyncMock(return_value=b"")
             self.stdout.readline = AsyncMock(side_effect=burn_lines)
 
         async def wait(self):
@@ -323,8 +319,10 @@ async def test_job_pipeline_transcode_failure(tmp_path):
         def __init__(self, *args, **kwargs):
             self.returncode = 1
             self.stderr = AsyncMock()
+            self.stderr.read = AsyncMock(return_value=b"")
             self.stderr.readline = AsyncMock(return_value=b"")
             self.stdout = AsyncMock()
+            self.stdout.read = AsyncMock(return_value=b"")
             self.stdout.readline = AsyncMock(return_value=b"")
 
         async def wait(self):
@@ -386,8 +384,10 @@ async def test_job_pipeline_cancellation(tmp_path):
         def __init__(self, *args, **kwargs):
             self.returncode = 0
             self.stderr = AsyncMock()
+            self.stderr.read = AsyncMock(side_effect=infinite_readline)
             self.stderr.readline = AsyncMock(side_effect=infinite_readline)
             self.stdout = AsyncMock()
+            self.stdout.read = AsyncMock(return_value=b"")
             self.stdout.readline = AsyncMock(return_value=b"")
 
         async def wait(self):

@@ -182,7 +182,9 @@ class SmartSubprocessMock:
         cmd_name = self.cmd[0] if self.cmd else ""
         if self.fail_on_cmd and (self.fail_on_cmd in cmd_name or self.fail_on_cmd in self.cmd):
             self.returncode = 1
+            self.stderr.read = AsyncMock(side_effect=[b"Mocked error occurred\n", b""])
             self.stderr.readline = AsyncMock(side_effect=[b"Mocked error occurred\n", b""])
+            self.stdout.read = AsyncMock(return_value=b"")
             self.stdout.readline = AsyncMock(return_value=b"")
             return
 
@@ -194,14 +196,15 @@ class SmartSubprocessMock:
             os.makedirs(os.path.dirname(os.path.abspath(out_file)), exist_ok=True)
             with open(out_file, "wb") as f:
                 f.write(b"MOCK_TRANSCODED_STREAM_BYTES")
-            self.stderr.readline = AsyncMock(
-                side_effect=[
-                    b"frame= 100 fps= 45.0 q=2.0 size= 1024kB time=00:15:00.00 bitrate= 4500kbits/s speed= 2.0x\n",
-                    b"frame= 300 fps= 48.0 q=2.0 size= 3072kB time=00:30:00.00 bitrate= 4500kbits/s speed= 2.2x\n",
-                    b"frame= 600 fps= 50.0 q=2.0 size= 6144kB time=01:00:00.00 bitrate= 4500kbits/s speed= 2.5x\n",
-                    b"",
-                ]
-            )
+            progress_chunks = [
+                b"frame= 100 fps= 45.0 q=2.0 size= 1024kB time=00:15:00.00 bitrate= 4500kbits/s speed= 2.0x\n",
+                b"frame= 300 fps= 48.0 q=2.0 size= 3072kB time=00:30:00.00 bitrate= 4500kbits/s speed= 2.2x\n",
+                b"frame= 600 fps= 50.0 q=2.0 size= 6144kB time=01:00:00.00 bitrate= 4500kbits/s speed= 2.5x\n",
+                b"",
+            ]
+            self.stderr.read = AsyncMock(side_effect=progress_chunks)
+            self.stderr.readline = AsyncMock(side_effect=progress_chunks)
+            self.stdout.read = AsyncMock(return_value=b"")
             self.stdout.readline = AsyncMock(return_value=b"")
 
         elif "dvdauthor" in cmd_name:
@@ -217,7 +220,9 @@ class SmartSubprocessMock:
                 f.write(b"DVDVIDEO-VTS")
             with open(os.path.join(v_ts, "VTS_01_1.VOB"), "wb") as f:
                 f.write(b"DVDVIDEO-VOB-DATA")
+            self.stderr.read = AsyncMock(return_value=b"")
             self.stderr.readline = AsyncMock(return_value=b"")
+            self.stdout.read = AsyncMock(return_value=b"")
             self.stdout.readline = AsyncMock(return_value=b"")
 
         elif "tsMuxeR" in cmd_name:
@@ -231,7 +236,9 @@ class SmartSubprocessMock:
                 f.write(b"INDX0200")
             with open(os.path.join(bdmv, "MovieObject.bdmv"), "wb") as f:
                 f.write(b"MOBJ0200")
+            self.stderr.read = AsyncMock(return_value=b"")
             self.stderr.readline = AsyncMock(return_value=b"")
+            self.stdout.read = AsyncMock(return_value=b"")
             self.stdout.readline = AsyncMock(return_value=b"")
 
         elif "genisoimage" in cmd_name or "xorriso" in cmd_name:
@@ -1083,8 +1090,10 @@ async def test_e2e_job_cancellation_during_transcode(tmp_path):
             self.returncode = 0
             self.killed = False
             self.stderr = AsyncMock()
+            self.stderr.read = AsyncMock(side_effect=hanging_readline)
             self.stderr.readline = AsyncMock(side_effect=hanging_readline)
             self.stdout = AsyncMock()
+            self.stdout.read = AsyncMock(return_value=b"")
             self.stdout.readline = AsyncMock(return_value=b"")
 
         async def wait(self):
