@@ -781,20 +781,30 @@
       const data = await res.json();
       state.telemetry = data;
 
+      const cpuStatus = document.getElementById('telemetry-cpu-status');
+      const ramStatus = document.getElementById('telemetry-ram-status');
       const gpuStatus = document.getElementById('telemetry-gpu-status');
       const sysDot = document.getElementById('system-status-dot');
+
+      if (cpuStatus && data.cpu_percent !== undefined) {
+        cpuStatus.textContent = `${data.cpu_percent}%`;
+      }
+
+      if (ramStatus && data.ram_used_gb !== undefined && data.ram_total_gb !== undefined) {
+        ramStatus.textContent = `${data.ram_used_gb}/${data.ram_total_gb}GB (${data.ram_percent}%)`;
+      }
 
       if (gpuStatus) {
         if (data.gpu_available) {
           const usedGB = (data.gpu_memory_used_mb / 1024).toFixed(1);
           const totalGB = (data.gpu_memory_total_mb / 1024).toFixed(1);
           gpuStatus.textContent = `${data.gpu_utilization_percent}% • ${usedGB}/${totalGB}GB • ${data.gpu_temp_c}°C`;
-          if (sysDot) sysDot.className = 'status-dot';
         } else {
           gpuStatus.textContent = 'CPU Mode (No GPU)';
-          if (sysDot) sysDot.className = 'status-dot';
         }
       }
+
+      if (sysDot) sysDot.className = 'status-dot';
     } catch (err) {
       const sysDot = document.getElementById('system-status-dot');
       if (sysDot) sysDot.className = 'status-dot danger';
