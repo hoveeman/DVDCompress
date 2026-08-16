@@ -36,8 +36,8 @@ COPY src/ /app/src/
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-# Install Python requirements
-RUN pip3 install --no-cache-dir -e /app
+# Upgrade pip tooling and install Python package
+RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel && pip3 install --no-cache-dir /app
 
 EXPOSE 8080
 
