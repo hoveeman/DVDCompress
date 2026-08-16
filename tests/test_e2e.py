@@ -1453,3 +1453,116 @@ async def test_e2e_bluray_preview_iso_pipeline(tmp_path, monkeypatch):
     assert job.output_iso_path == expected_out
     assert os.path.exists(expected_out)
 
+
+@pytest.mark.asyncio
+async def test_e2e_dvd_and_bluray_multi_subtitle_authoring(tmp_path, monkeypatch):
+    """Verify subtitle extraction, multi-language dvdauthor.xml, and tsMuxeR .meta generation."""
+    manager = JobManager()
+    manager.jobs.clear()
+    media_file = str(tmp_path / "movie_subs.mkv")
+    with open(media_file, "w") as f:
+        f.write("content")
+
+    output_dir = str(tmp_path / "output")
+    scratch_dir = str(tmp_path / "scratch")
+    os.makedirs(output_dir, exist_ok=True)
+
+    fake_media_info = MediaInfo(
+        path=media_file,
+        filename="movie_subs.mkv",
+        duration_sec=7200.0,
+        width=3840,
+        height=2160,
+        aspect_ratio="16:9",
+        frame_rate=23.976,
+        video_codec="hevc",
+        audio_streams=[AudioStreamInfo(index=1, codec_name="dts", channels=6)],
+        subtitle_streams=[
+            SubtitleStreamInfo(index=2, codec_name="subrip", language="eng", title="English SDH", is_default=True),
+            SubtitleStreamInfo(index=3, codec_name="hdmv_pgs_subtitle", language="spa", title="Spanish Forced", is_forced=True),
+            SubtitleStreamInfo(index=4, codec_name="subrip", language="fre", title="French"),
+        ],
+        size_bytes=20000000000,
+    )
+
+    monkeypatch.setattr("dvdcompress.job_manager.probe_media_file", AsyncMock(return_value=fake_media_info))
+
+    executed_cmds = []
+
+    class FakeProc:
+        returncode = 0
+        async def wait(self): return 0
+        @property
+        def stderr(self):
+            class Stream:
+                async def read(self, n): return b""
+            return Stream()
+        def send_signal(self, sig): pass
+        def kill(self): pass
+
+    captured_meta = {}
+    captured_xml = {}
+
+    async def fake_exec(*cmd, **kwargs):
+        executed_cmds.append(list(cmd))
+        if cmd[0] == "tsMuxeR" and len(cmd) > 1 and os.path.exists(cmd[1]):
+            with open(cmd[1], "r") as f:
+                captured_meta["tsmuxer.meta"] = f.read()
+        elif cmd[0] == "dvdauthor" and "-x" in cmd:
+            x_idx = cmd.index("-x")
+            if os.path.exists(cmd[x_idx + 1]):
+                with open(cmd[x_idx + 1], "r") as f:
+                    captured_xml["dvdauthor.xml"] = f.read()
+        if "-o" in cmd:
+            iso_target = cmd[cmd.index("-o") + 1]
+            if iso_target.endswith(".iso"):
+                with open(iso_target, "w") as f:
+                    f.write("ISO_BYTES")
+        return FakeProc()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+
+    # 1. Blu-ray with Subtitles
+    bd_job_id = manager.create_job(
+        input_files=[media_file],
+        disc_type=DiscType.BD25,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="subs_bluray",
+        selected_subtitle_indices=[2, 3],  # Select English and Spanish
+    )
+    await manager.start_job(bd_job_id, scratch_dir=scratch_dir, output_dir=output_dir)
+    await manager.active_tasks[bd_job_id]
+
+    bd_job = manager.get_job(bd_job_id)
+    assert bd_job.stage == JobStage.COMPLETED
+
+    # Verify tsMuxeR meta file contains both SRT and PGS entries
+    assert "tsmuxer.meta" in captured_meta
+    meta_text = captured_meta["tsmuxer.meta"]
+    assert "S_TEXT/UTF8" in meta_text
+    assert "lang=eng" in meta_text
+    assert "S_HDMV/PGS" in meta_text
+    assert "lang=spa" in meta_text
+
+    # 2. DVD with Subtitles
+    dvd_job_id = manager.create_job(
+        input_files=[media_file],
+        disc_type=DiscType.DVD9,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="subs_dvd",
+        selected_subtitle_indices=[2, 4],  # Select English and French
+    )
+    await manager.start_job(dvd_job_id, scratch_dir=scratch_dir, output_dir=output_dir)
+    await manager.active_tasks[dvd_job_id]
+
+    dvd_job = manager.get_job(dvd_job_id)
+    assert dvd_job.stage == JobStage.COMPLETED
+
+    # Verify dvdauthor XML contains subpicture tags for selected languages
+    assert "dvdauthor.xml" in captured_xml
+    xml_text = captured_xml["dvdauthor.xml"]
+    assert '<subpicture lang="en" />' in xml_text
+    assert '<subpicture lang="fr" />' in xml_text
+
+
+
