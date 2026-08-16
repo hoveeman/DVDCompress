@@ -107,3 +107,16 @@ def test_javascript_app_served():
     assert "/api/calculate" in js
     assert "/api/drives" in js
     assert "/ws/jobs/" in js
+
+
+def test_preview_modal_and_button_in_html():
+    res = client.get("/")
+    assert res.status_code == 200
+    html = res.text
+
+    assert 'id="btn-preview-project"' in html
+    assert 'id="modal-preview"' in html
+    assert 'id="btn-confirm-preview"' in html
+    assert 'id="preview-type-video"' in html
+    assert 'id="preview-type-iso"' in html
+

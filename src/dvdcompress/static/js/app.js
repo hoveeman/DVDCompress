@@ -21,6 +21,8 @@
       burner_device: '',
       burn_speed: 4,
       use_gpu: true,
+    preview: {
+      preview_mode: 'preview_video',
     },
     standaloneBurner: {
       iso_path: '',
@@ -225,6 +227,37 @@
     if (btnStart) {
       btnStart.addEventListener('click', startProject);
     }
+
+    // Preview Project Button & Modal
+    const btnPreview = document.getElementById('btn-preview-project');
+    if (btnPreview) {
+      btnPreview.addEventListener('click', openPreviewModal);
+    }
+
+    const btnClosePreview = document.getElementById('btn-close-preview-modal');
+    if (btnClosePreview) {
+      btnClosePreview.addEventListener('click', closePreviewModal);
+    }
+
+    const btnCancelPreview = document.getElementById('btn-cancel-preview-modal');
+    if (btnCancelPreview) {
+      btnCancelPreview.addEventListener('click', closePreviewModal);
+    }
+
+    const btnConfirmPreview = document.getElementById('btn-confirm-preview');
+    if (btnConfirmPreview) {
+      btnConfirmPreview.addEventListener('click', startPreviewProject);
+    }
+
+    const selectPreviewTitle = document.getElementById('select-preview-title');
+    if (selectPreviewTitle) {
+      selectPreviewTitle.addEventListener('change', updatePreviewInfoSummary);
+    }
+
+    setupSegmentGroup('control-preview-type', (val) => {
+      state.preview.preview_mode = val;
+      updatePreviewInfoSummary();
+    });
 
     // Standalone Burn ISO Button
     const btnBurnIso = document.getElementById('btn-start-burn-iso');
@@ -638,6 +671,7 @@
     const statUsage = document.getElementById('stat-capacity-usage');
     const warningsContainer = document.getElementById('gauge-warnings-container');
     const btnStart = document.getElementById('btn-start-project');
+    const btnPreview = document.getElementById('btn-preview-project');
 
     if (state.playlist.length === 0) {
       if (percentText) percentText.textContent = '0.0%';
@@ -651,6 +685,7 @@
       if (statUsage) statUsage.textContent = '0 / 4,480 MB';
       if (warningsContainer) warningsContainer.innerHTML = '';
       if (btnStart) btnStart.disabled = true;
+      if (btnPreview) btnPreview.disabled = true;
       return;
     }
 
@@ -731,9 +766,12 @@
         }
       }
 
-      // Enable start project button
+      // Enable start project & preview buttons
       if (btnStart) {
         btnStart.disabled = !budget.fits_disc && capPct > 105;
+      }
+      if (btnPreview) {
+        btnPreview.disabled = state.playlist.length === 0;
       }
 
     } catch (err) {
@@ -948,6 +986,121 @@
       connectJobWebSocket(data.job_id);
     } catch (err) {
       showToast(`Failed to start burn: ${err.message}`, 'error');
+    }
+  }
+
+  // 1-Minute Preview Management
+  function openPreviewModal() {
+    if (state.playlist.length === 0) {
+      showToast('Please add at least one video to generate a preview', 'error');
+      return;
+    }
+
+    const select = document.getElementById('select-preview-title');
+    if (select) {
+      select.innerHTML = '';
+      state.playlist.forEach((item, idx) => {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = `#${idx + 1}: ${item.filename} (${formatSeconds(item.duration_sec)})`;
+        select.appendChild(opt);
+      });
+      select.value = 0;
+    }
+
+    updatePreviewInfoSummary();
+
+    const modal = document.getElementById('modal-preview');
+    if (modal) {
+      modal.style.display = 'flex';
+    }
+  }
+
+  function closePreviewModal() {
+    const modal = document.getElementById('modal-preview');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+  }
+
+  function updatePreviewInfoSummary() {
+    const select = document.getElementById('select-preview-title');
+    const windowText = document.getElementById('preview-window-text');
+    const encodingText = document.getElementById('preview-encoding-text');
+    if (!select || state.playlist.length === 0) return;
+
+    const idx = parseInt(select.value, 10) || 0;
+    const media = state.playlist[idx] || state.playlist[0];
+    if (!media) return;
+
+    const dur = media.duration_sec || 0;
+    if (dur > 60) {
+      const seekStart = Math.max(0, (dur / 2) - 30);
+      const seekEnd = seekStart + 60;
+      if (windowText) {
+        windowText.textContent = `Midpoint 60s (${formatSeconds(seekStart)} - ${formatSeconds(seekEnd)})`;
+      }
+    } else {
+      if (windowText) {
+        windowText.textContent = `Full 0:00 - ${formatSeconds(dur)} (${Math.round(dur)}s clip)`;
+      }
+    }
+
+    if (encodingText) {
+      const isBluray = ['bd25', 'bd50', 'bd66', 'bd100', 'bd128'].includes(state.config.disc_type);
+      const codec = isBluray ? 'H.264 High@L4.1 1080p' : `MPEG-2 ${state.config.tv_standard.toUpperCase()} ${state.config.aspect_ratio}`;
+      const bitrate = state.calculatedBudget ? `${state.calculatedBudget.video_bitrate_kbps.toLocaleString()} kbps` : 'Auto';
+      const gpu = state.config.use_gpu ? 'GPU' : 'CPU';
+      const modeLabel = state.preview.preview_mode === 'preview_iso' ? 'Mini-ISO' : (isBluray ? '.m2ts' : '.mpg');
+      encodingText.textContent = `${codec} • ${bitrate} (${gpu}) • ${modeLabel}`;
+    }
+  }
+
+  async function startPreviewProject() {
+    if (state.playlist.length === 0) {
+      showToast('Please add at least one video to generate a preview', 'error');
+      return;
+    }
+
+    const select = document.getElementById('select-preview-title');
+    const idx = select ? (parseInt(select.value, 10) || 0) : 0;
+    const media = state.playlist[idx] || state.playlist[0];
+    if (!media) return;
+
+    const baseName = state.config.output_name || 'DVD_PROJECT';
+    const payload = {
+      input_file: media.path,
+      preview_mode: state.preview.preview_mode,
+      disc_type: state.config.disc_type,
+      output_name: `preview_${baseName}`,
+      tv_standard: state.config.tv_standard,
+      aspect_ratio: state.config.aspect_ratio,
+      menu_mode: state.config.menu_mode,
+      use_gpu: state.config.use_gpu,
+    };
+
+    closePreviewModal();
+
+    try {
+      const res = await fetch('/api/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      showToast(`Preview job ${data.job_id} started! Writing to dvd_output`, 'success');
+
+      // Switch to Pipeline View and connect WebSocket
+      switchTab('view-jobs');
+      connectJobWebSocket(data.job_id);
+    } catch (err) {
+      showToast(`Failed to start preview: ${err.message}`, 'error');
     }
   }
 
