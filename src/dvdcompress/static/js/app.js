@@ -235,6 +235,12 @@
       btnCancel.addEventListener('click', cancelActiveJob);
     }
 
+    // Pause / Resume Job Button
+    const btnPause = document.getElementById('btn-pause-job');
+    if (btnPause) {
+      btnPause.addEventListener('click', togglePauseActiveJob);
+    }
+
     // Clear Logs Button
     const btnClearLogs = document.getElementById('btn-clear-logs');
     if (btnClearLogs) {
@@ -993,6 +999,7 @@
     const fpsSpeed = document.getElementById('metric-fps-speed');
     const etaElem = document.getElementById('metric-eta');
     const btnCancel = document.getElementById('btn-cancel-job');
+    const btnPause = document.getElementById('btn-pause-job');
 
     if (subtitleElem) {
       subtitleElem.textContent = `${job.output_name} • Format: ${job.disc_type.toUpperCase()} • Mode: ${job.output_mode}`;
@@ -1012,7 +1019,8 @@
 
     // Update 5-Stage Stepper
     const stageOrder = ['probing', 'transcoding', 'authoring', 'mastering_iso', 'burning'];
-    const currentIdx = stageOrder.indexOf(job.stage);
+    const activeStage = job.stage === 'paused' ? (job.previous_stage || 'transcoding') : job.stage;
+    const currentIdx = stageOrder.indexOf(activeStage);
 
     stageOrder.forEach((st, idx) => {
       const stepElem = document.getElementById(`step-${st}`);
@@ -1041,14 +1049,25 @@
       }
     }
 
-    // Hide cancel button if completed or failed or cancelled
-    if (['completed', 'failed', 'cancelled'].includes(job.stage)) {
-      if (btnCancel) btnCancel.style.display = 'none';
-      if (job.stage === 'completed') {
-        showToast(`Job ${job.job_id} completed successfully!`, 'success');
-      } else if (job.stage === 'failed') {
-        showToast(`Job ${job.job_id} failed: ${job.error_message || 'Unknown error'}`, 'error');
+    const isTerminal = ['completed', 'failed', 'cancelled'].includes(job.stage);
+
+    if (btnPause) {
+      if (isTerminal) {
+        btnPause.style.display = 'none';
+      } else {
+        btnPause.style.display = 'inline-flex';
+        btnPause.textContent = job.stage === 'paused' ? 'Resume' : 'Pause';
       }
+    }
+
+    if (btnCancel) {
+      btnCancel.style.display = isTerminal ? 'none' : 'inline-flex';
+    }
+
+    if (job.stage === 'completed') {
+      showToast(`Job ${job.job_id} completed successfully!`, 'success');
+    } else if (job.stage === 'failed') {
+      showToast(`Job ${job.job_id} failed: ${job.error_message || 'Unknown error'}`, 'error');
     }
   }
 
@@ -1071,6 +1090,28 @@
     }
   }
 
+  async function togglePauseActiveJob() {
+    if (!state.activeJobId) return;
+
+    // Check current state from state.jobs or fetch
+    let isPaused = false;
+    const currentJob = (state.jobs || []).find(j => j.job_id === state.activeJobId);
+    if (currentJob) {
+      isPaused = currentJob.stage === 'paused';
+    }
+
+    const action = isPaused ? 'resume' : 'pause';
+
+    try {
+      const res = await fetch(`/api/jobs/${state.activeJobId}/${action}`, { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      showToast(`Job ${state.activeJobId} ${action}d`, 'info');
+      loadJobHistory();
+    } catch (err) {
+      showToast(`Failed to ${action} job: ${err.message}`, 'error');
+    }
+  }
+
   async function cancelActiveJob() {
     if (!state.activeJobId) return;
 
@@ -1082,6 +1123,7 @@
       const res = await fetch(`/api/jobs/${state.activeJobId}/cancel`, { method: 'POST' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       showToast(`Cancellation requested for job ${state.activeJobId}`, 'info');
+      loadJobHistory();
     } catch (err) {
       showToast(`Failed to cancel job: ${err.message}`, 'error');
     }
@@ -1116,6 +1158,7 @@
 
       jobs.forEach(j => {
         const tr = document.createElement('tr');
+        const isPaused = j.stage === 'paused';
         const isActive = !['completed', 'failed', 'cancelled'].includes(j.stage);
 
         tr.innerHTML = `
@@ -1125,8 +1168,9 @@
           <td style="font-size: 0.75rem; color: var(--text-secondary);">${j.output_mode}</td>
           <td><span class="status-pill ${j.stage || 'idle'}">${(j.stage || 'idle').toUpperCase()}</span></td>
           <td style="font-family: var(--font-mono);">${(j.progress_percent || 0).toFixed(1)}%</td>
-          <td style="text-align: right;">
+          <td style="text-align: right; white-space: nowrap;">
             <button class="btn btn-secondary btn-sm btn-monitor-job">Monitor</button>
+            ${isActive ? `<button class="btn btn-secondary btn-sm btn-pause-job-row" style="margin-left: 4px;">${isPaused ? 'Resume' : 'Pause'}</button>` : ''}
             ${isActive ? '<button class="btn btn-danger btn-sm btn-cancel-job-row" style="margin-left: 4px;">Cancel</button>' : ''}
           </td>
         `;
@@ -1134,6 +1178,12 @@
         tr.querySelector('.btn-monitor-job')?.addEventListener('click', () => {
           connectJobWebSocket(j.job_id);
           window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+
+        tr.querySelector('.btn-pause-job-row')?.addEventListener('click', async () => {
+          const act = j.stage === 'paused' ? 'resume' : 'pause';
+          await fetch(`/api/jobs/${j.job_id}/${act}`, { method: 'POST' });
+          loadJobHistory();
         });
 
         tr.querySelector('.btn-cancel-job-row')?.addEventListener('click', async () => {

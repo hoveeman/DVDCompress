@@ -1170,8 +1170,10 @@ input:checked + .slider:before {
 }
 
 .status-pill.idle { background: var(--bg-elevated); color: var(--text-secondary); }
+.status-pill.queued { background: var(--bg-elevated); color: var(--text-secondary); }
 .status-pill.probing { background: var(--accent-cyan-bg); color: var(--accent-cyan); }
 .status-pill.transcoding { background: var(--accent-primary-bg); color: var(--accent-primary); }
+.status-pill.paused { background: var(--color-warning-bg); color: var(--color-warning); border: 1px solid rgba(245, 158, 11, 0.3); }
 .status-pill.authoring { background: rgba(168, 85, 247, 0.12); color: var(--color-purple); }
 .status-pill.mastering_iso { background: var(--accent-primary-bg); color: var(--accent-primary); }
 .status-pill.burning { background: var(--color-warning-bg); color: var(--color-warning); }

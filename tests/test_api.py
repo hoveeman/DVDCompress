@@ -264,6 +264,20 @@ def test_api_jobs_lifecycle(tmp_path):
     res_get_404 = client.get("/api/jobs/nonexistent_id")
     assert res_get_404.status_code == 404
 
+    # Pause job
+    with patch.object(job_manager, "pause_job", new_callable=AsyncMock) as mock_pause:
+        res_pause = client.post(f"/api/jobs/{job_id}/pause")
+        assert res_pause.status_code == 200
+        assert res_pause.json()["status"] == "paused"
+        mock_pause.assert_called_once_with(job_id)
+
+    # Resume job
+    with patch.object(job_manager, "resume_job", new_callable=AsyncMock) as mock_resume:
+        res_resume = client.post(f"/api/jobs/{job_id}/resume")
+        assert res_resume.status_code == 200
+        assert res_resume.json()["status"] == "resumed"
+        mock_resume.assert_called_once_with(job_id)
+
     # Cancel job
     with patch.object(job_manager, "cancel_job", new_callable=AsyncMock) as mock_cancel:
         res_cancel = client.post(f"/api/jobs/{job_id}/cancel")
@@ -274,6 +288,14 @@ def test_api_jobs_lifecycle(tmp_path):
     # Cancel non-existent job returns 404
     res_cancel_404 = client.post("/api/jobs/nonexistent_id/cancel")
     assert res_cancel_404.status_code == 404
+
+    # Pause non-existent job returns 404
+    res_pause_404 = client.post("/api/jobs/nonexistent_id/pause")
+    assert res_pause_404.status_code == 404
+
+    # Resume non-existent job returns 404
+    res_resume_404 = client.post("/api/jobs/nonexistent_id/resume")
+    assert res_resume_404.status_code == 404
 
 
 def test_api_burn_iso(tmp_path):

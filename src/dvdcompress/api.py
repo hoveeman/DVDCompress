@@ -346,6 +346,24 @@ async def cancel_job(job_id: str):
     return {"status": "cancelled"}
 
 
+@app.post("/api/jobs/{job_id}/pause")
+async def pause_job_endpoint(job_id: str):
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    await job_manager.pause_job(job_id)
+    return {"status": "paused"}
+
+
+@app.post("/api/jobs/{job_id}/resume")
+async def resume_job_endpoint(job_id: str):
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    await job_manager.resume_job(job_id)
+    return {"status": "resumed"}
+
+
 @app.websocket("/ws/jobs/{job_id}")
 async def websocket_job_endpoint(websocket: WebSocket, job_id: str):
     await websocket.accept()

@@ -1103,6 +1103,9 @@ async def test_e2e_job_cancellation_during_transcode(tmp_path):
         def kill(self):
             self.killed = True
 
+        def send_signal(self, sig):
+            pass
+
     active_mock_proc = None
 
     def create_mock(*cmd, **kwargs):

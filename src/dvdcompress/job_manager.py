@@ -1,8 +1,9 @@
-"""Async job manager and orchestration pipeline for DVDCompress."""
+"""Async job manager and orchestration pipeline for DVDCompress with pause/resume and sequential queuing."""
 
 import asyncio
 import os
 import shutil
+import signal
 import uuid
 from enum import Enum
 from typing import Dict, List, Optional
@@ -24,8 +25,10 @@ from dvdcompress.transcoder import (
 
 class JobStage(str, Enum):
     IDLE = "idle"
+    QUEUED = "queued"
     PROBING = "probing"
     TRANSCODING = "transcoding"
+    PAUSED = "paused"
     AUTHORING = "authoring"
     MASTERING_ISO = "mastering_iso"
     BURNING = "burning"
@@ -37,6 +40,8 @@ class JobStage(str, Enum):
 class Job(BaseModel):
     job_id: str
     stage: JobStage = JobStage.IDLE
+    previous_stage: Optional[JobStage] = None
+    is_paused: bool = False
     input_files: List[str]
     disc_type: DiscType
     output_mode: OutputMode
@@ -61,10 +66,17 @@ class Job(BaseModel):
 
 
 class JobManager:
-    def __init__(self):
-        self.jobs: Dict[str, Job] = {}
-        self.active_tasks: Dict[str, asyncio.Task] = {}
-        self.listeners: Dict[str, List[asyncio.Queue]] = {}
+    _instance: Optional["JobManager"] = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(JobManager, cls).__new__(cls)
+            cls._instance.jobs = {}
+            cls._instance.active_tasks = {}
+            cls._instance.active_processes = {}
+            cls._instance.pause_events = {}
+            cls._instance.listeners = {}
+        return cls._instance
 
     def create_job(
         self,
@@ -96,6 +108,8 @@ class JobManager:
             total_files=len(input_files),
         )
         self.jobs[job_id] = job
+        self.pause_events[job_id] = asyncio.Event()
+        self.pause_events[job_id].set()
         return job_id
 
     def get_job(self, job_id: str) -> Optional[Job]:
@@ -130,7 +144,72 @@ class JobManager:
         self.active_tasks[job_id] = task
         return task
 
+    async def pause_job(self, job_id: str):
+        """Pause an active job, suspending its running subprocess."""
+        job = self.get_job(job_id)
+        if not job or job.stage in (JobStage.COMPLETED, JobStage.FAILED, JobStage.CANCELLED, JobStage.PAUSED):
+            return
+
+        job.previous_stage = job.stage
+        job.stage = JobStage.PAUSED
+        job.is_paused = True
+
+        if job_id in self.pause_events:
+            self.pause_events[job_id].clear()
+
+        if job_id in self.active_processes:
+            proc = self.active_processes[job_id]
+            try:
+                proc.send_signal(signal.SIGSTOP)
+            except Exception:
+                pass
+
+        self.log(job_id, "Job paused by user.")
+        await self.broadcast(job_id)
+
+    async def resume_job(self, job_id: str):
+        """Resume a paused job, continuing its running subprocess."""
+        job = self.get_job(job_id)
+        if not job or job.stage != JobStage.PAUSED:
+            return
+
+        job.stage = job.previous_stage or JobStage.TRANSCODING
+        job.is_paused = False
+
+        if job_id in self.active_processes:
+            proc = self.active_processes[job_id]
+            try:
+                proc.send_signal(signal.SIGCONT)
+            except Exception:
+                pass
+
+        if job_id in self.pause_events:
+            self.pause_events[job_id].set()
+
+        self.log(job_id, "Job resumed.")
+        await self.broadcast(job_id)
+
+    async def _auto_resume_next_job(self, exclude_job_id: Optional[str] = None):
+        """Automatically pick up and resume the next paused job in FIFO order."""
+        for other_id, other_job in self.jobs.items():
+            if other_id != exclude_job_id and other_job.stage == JobStage.PAUSED and other_job.is_paused:
+                self.log(other_id, f"Previous job finished. Auto-resuming job {other_id}...")
+                await self.resume_job(other_id)
+                break
+
     async def cancel_job(self, job_id: str):
+        job = self.get_job(job_id)
+        if job_id in self.pause_events:
+            self.pause_events[job_id].set()
+
+        if job_id in self.active_processes:
+            proc = self.active_processes[job_id]
+            try:
+                proc.send_signal(signal.SIGCONT)
+                proc.kill()
+            except Exception:
+                pass
+
         if job_id in self.active_tasks:
             task = self.active_tasks[job_id]
             task.cancel()
@@ -141,11 +220,12 @@ class JobManager:
             except Exception:
                 pass
         else:
-            job = self.get_job(job_id)
             if job:
                 job.stage = JobStage.CANCELLED
                 job.error_message = "Job cancelled by user"
                 await self.broadcast(job_id)
+
+        await self._auto_resume_next_job(job_id)
 
     async def _run_pipeline(self, job_id: str, scratch_dir: str, output_dir: str):
         job = self.get_job(job_id)
@@ -216,9 +296,14 @@ class JobManager:
                     stderr=asyncio.subprocess.PIPE,
                 )
                 current_process = proc
+                self.active_processes[job_id] = proc
 
                 buffer = ""
                 while True:
+                    # If paused, wait for resume
+                    if job_id in self.pause_events:
+                        await self.pause_events[job_id].wait()
+
                     chunk = await proc.stderr.read(512)
                     if not chunk:
                         break
@@ -250,12 +335,20 @@ class JobManager:
                                 h, m = divmod(m, 60)
                                 job.eta = f"{h:02d}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
 
-                            await self.broadcast(job_id)
+                            if job.stage != JobStage.PAUSED:
+                                await self.broadcast(job_id)
 
                 await proc.wait()
                 current_process = None
-                if proc.returncode != 0:
+                if job_id in self.active_processes:
+                    del self.active_processes[job_id]
+
+                if proc.returncode != 0 and job.stage != JobStage.CANCELLED:
                     raise RuntimeError(f"Transcoding failed for {info.filename}")
+
+            # Check pause before authoring
+            if job_id in self.pause_events:
+                await self.pause_events[job_id].wait()
 
             # 3. Authoring
             job.stage = JobStage.AUTHORING
@@ -273,8 +366,11 @@ class JobManager:
                     mf.write(meta_content)
                 proc = await asyncio.create_subprocess_exec("tsMuxeR", meta_path, author_dir)
                 current_process = proc
+                self.active_processes[job_id] = proc
                 await proc.wait()
                 current_process = None
+                if job_id in self.active_processes:
+                    del self.active_processes[job_id]
                 if proc.returncode != 0:
                     raise RuntimeError("Authoring failed with tsMuxeR")
             else:
@@ -289,10 +385,17 @@ class JobManager:
                     xf.write(xml_content)
                 proc = await asyncio.create_subprocess_exec("dvdauthor", "-o", author_dir, "-x", xml_path)
                 current_process = proc
+                self.active_processes[job_id] = proc
                 await proc.wait()
                 current_process = None
+                if job_id in self.active_processes:
+                    del self.active_processes[job_id]
                 if proc.returncode != 0:
                     raise RuntimeError("Authoring failed with dvdauthor")
+
+            # Check pause before ISO creation
+            if job_id in self.pause_events:
+                await self.pause_events[job_id].wait()
 
             # 4. ISO Creation
             job.stage = JobStage.MASTERING_ISO
@@ -309,13 +412,20 @@ class JobManager:
 
             proc = await asyncio.create_subprocess_exec(*iso_cmd)
             current_process = proc
+            self.active_processes[job_id] = proc
             await proc.wait()
             current_process = None
+            if job_id in self.active_processes:
+                del self.active_processes[job_id]
             if proc.returncode != 0:
                 raise RuntimeError("ISO creation failed")
 
             # 5. Burning (Optional)
             if job.output_mode in (OutputMode.BURN_DIRECT, OutputMode.AUTHOR_AND_BURN) and job.burner_device:
+                # Check pause before burning
+                if job_id in self.pause_events:
+                    await self.pause_events[job_id].wait()
+
                 job.stage = JobStage.BURNING
                 self.log(job_id, f"Burning ISO to {job.burner_device} at {job.burn_speed}x...")
                 await self.broadcast(job_id)
@@ -326,6 +436,7 @@ class JobManager:
                     stderr=asyncio.subprocess.PIPE,
                 )
                 current_process = proc
+                self.active_processes[job_id] = proc
                 while True:
                     line = await proc.stdout.readline()
                     if not line:
@@ -339,17 +450,24 @@ class JobManager:
                         await self.broadcast(job_id)
                 await proc.wait()
                 current_process = None
+                if job_id in self.active_processes:
+                    del self.active_processes[job_id]
                 if proc.returncode != 0:
                     raise RuntimeError("Burning failed")
 
             job.stage = JobStage.COMPLETED
             job.progress_percent = 100.0
+            job.stage_percent = 100.0
             self.log(job_id, "Job finished successfully!")
             await self.broadcast(job_id)
+
+            # Auto-resume next paused job
+            await self._auto_resume_next_job(job_id)
 
         except asyncio.CancelledError:
             if current_process:
                 try:
+                    current_process.send_signal(signal.SIGCONT)
                     current_process.kill()
                 except Exception:
                     pass
@@ -357,9 +475,11 @@ class JobManager:
             job.error_message = "Job cancelled by user"
             self.log(job_id, "Job was cancelled.")
             await self.broadcast(job_id)
+            await self._auto_resume_next_job(job_id)
         except Exception as e:
             if current_process:
                 try:
+                    current_process.send_signal(signal.SIGCONT)
                     current_process.kill()
                 except Exception:
                     pass
@@ -367,8 +487,10 @@ class JobManager:
             job.error_message = str(e)
             self.log(job_id, f"ERROR: {str(e)}")
             await self.broadcast(job_id)
+            await self._auto_resume_next_job(job_id)
         finally:
-            # Clean scratch work dir
+            if job_id in self.active_processes:
+                del self.active_processes[job_id]
             shutil.rmtree(work_dir, ignore_errors=True)
             if job_id in self.active_tasks:
                 del self.active_tasks[job_id]

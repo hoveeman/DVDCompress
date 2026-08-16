@@ -1,6 +1,7 @@
 import asyncio
 import os
 import shutil
+import signal
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
@@ -412,3 +413,62 @@ async def test_job_pipeline_cancellation(tmp_path):
         assert job.stage == JobStage.CANCELLED
         # Scratch directory cleaned up
         assert not os.path.exists(os.path.join(scratch_dir, job_id))
+
+
+@pytest.mark.asyncio
+async def test_job_pause_and_resume():
+    manager = JobManager()
+    manager.jobs.clear()
+    job_id = manager.create_job(
+        input_files=["/media/clip.mkv"],
+        disc_type=DiscType.DVD5,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="pause_test",
+    )
+    job = manager.get_job(job_id)
+    job.stage = JobStage.TRANSCODING
+
+    mock_proc = MagicMock()
+    mock_proc.send_signal = MagicMock()
+    manager.active_processes[job_id] = mock_proc
+
+    # Pause
+    await manager.pause_job(job_id)
+    assert job.stage == JobStage.PAUSED
+    assert job.is_paused is True
+    mock_proc.send_signal.assert_called_with(signal.SIGSTOP)
+
+    # Resume
+    await manager.resume_job(job_id)
+    assert job.stage == JobStage.TRANSCODING
+    assert job.is_paused is False
+    mock_proc.send_signal.assert_called_with(signal.SIGCONT)
+
+
+@pytest.mark.asyncio
+async def test_job_auto_resume_on_complete():
+    manager = JobManager()
+    manager.jobs.clear()
+    job1 = manager.create_job(
+        input_files=["/media/clip1.mkv"],
+        disc_type=DiscType.DVD5,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="job1",
+    )
+    job2 = manager.create_job(
+        input_files=["/media/clip2.mkv"],
+        disc_type=DiscType.DVD5,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="job2",
+    )
+
+    # Pause job 2
+    j2 = manager.get_job(job2)
+    j2.stage = JobStage.TRANSCODING
+    await manager.pause_job(job2)
+    assert j2.stage == JobStage.PAUSED
+
+    # Auto-resume triggered when job1 finishes
+    await manager._auto_resume_next_job(exclude_job_id=job1)
+    assert j2.stage == JobStage.TRANSCODING
+    assert j2.is_paused is False
