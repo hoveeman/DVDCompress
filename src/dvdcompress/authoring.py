@@ -1,6 +1,6 @@
 """Disc authoring specification and metadata generators for dvdauthor and tsMuxeR."""
 
-from typing import List
+from typing import List, Optional
 from dvdcompress.models import MenuMode, TVStandard
 
 
