@@ -48,10 +48,9 @@ def build_dvd_transcode_command(
     if duration_sec is not None and duration_sec > 0:
         cmd.extend(["-t", str(duration_sec)])
 
-    # Video stream mapping, audio mapping, and subtitle mapping
+    # Video stream mapping and audio mapping
     cmd.extend(["-map", "0:v:0"])
     cmd.extend(["-map", f"0:{audio_stream_idx}"])
-    cmd.extend(["-map", "0:s?", "-c:s", "dvdsub"])
 
     is_ntsc = tv_standard in (TVStandard.NTSC, TVStandard.AUTO)
     target = "ntsc-dvd" if is_ntsc else "pal-dvd"
@@ -64,7 +63,7 @@ def build_dvd_transcode_command(
         final_w, final_h = 720, 576
         sar_val, dar_val = ("64/45", "16/9") if is_16_9 else ("16/15", "4/3")
 
-    vf_filter = f"scale={final_w}:{final_h},setsar={sar_val},setdar={dar_val}"
+    vf_filter = f"scale={final_w}:{final_h},setsar={sar_val},setdar={dar_val},format=yuv420p"
 
     # High quality MPEG-2 video encoding
     cmd.extend(["-target", target])
@@ -126,12 +125,10 @@ def build_bluray_transcode_command(
             cmd.extend(["-t", str(duration_sec)])
         cmd.extend(["-c:v", "libx264", "-profile:v", "high", "-level", "4.1", "-bluray-compat", "1"])
 
-
     cmd.extend(["-map", "0:v:0", "-map", f"0:{audio_stream_idx}"])
-    cmd.extend(["-map", "0:s?", "-c:s", "copy"])
     cmd.extend(["-b:v", f"{video_bitrate_kbps}k", "-maxrate", "35000k", "-bufsize", "30000k"])
     cmd.extend(["-g", "24", "-keyint_min", "1", "-bf", "3"])
-    cmd.extend(["-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"])
+    cmd.extend(["-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p"])
     cmd.extend(["-c:a", "ac3", "-ar", "48000"])
     if audio_channels >= 6:
         cmd.extend(["-ac", "6", "-b:a", "448k"])

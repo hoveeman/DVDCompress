@@ -301,11 +301,18 @@ class JobManager:
 
                 effective_duration = dur_sec if (is_preview and dur_sec) else info.duration_sec
 
+                # Determine audio stream mapping from probed info
+                first_audio = info.audio_streams[0] if info.audio_streams else None
+                audio_idx = first_audio.index if first_audio else 1
+                audio_ch = first_audio.channels if first_audio else (6 if is_bluray else 2)
+
                 if is_bluray:
                     cmd = build_bluray_transcode_command(
                         input_file=info.path,
                         output_m2ts=out_file,
                         video_bitrate_kbps=budget.video_bitrate_kbps,
+                        audio_stream_idx=audio_idx,
+                        audio_channels=audio_ch,
                         use_gpu=job.use_gpu,
                         seek_start_sec=seek_sec,
                         duration_sec=dur_sec,
@@ -315,6 +322,8 @@ class JobManager:
                         input_file=info.path,
                         output_mpg=out_file,
                         video_bitrate_kbps=budget.video_bitrate_kbps,
+                        audio_stream_idx=audio_idx,
+                        audio_channels=audio_ch,
                         tv_standard=job.tv_standard,
                         aspect_ratio=job.aspect_ratio,
                         use_gpu=job.use_gpu,
@@ -332,6 +341,7 @@ class JobManager:
                 self.active_processes[job_id] = proc
 
                 buffer = ""
+                stderr_recent = []
                 while True:
                     # If paused, wait for resume
                     if job_id in self.pause_events:
@@ -344,6 +354,11 @@ class JobManager:
                     lines = buffer.replace("\r", "\n").split("\n")
                     buffer = lines[-1]
                     for line in lines[:-1]:
+                        if line.strip():
+                            stderr_recent.append(line.strip())
+                            if len(stderr_recent) > 30:
+                                stderr_recent.pop(0)
+
                         prog = parse_ffmpeg_progress_line(line)
                         if "frame" in prog or "time_sec" in prog:
                             if "fps" in prog:
@@ -378,7 +393,8 @@ class JobManager:
                     del self.active_processes[job_id]
 
                 if proc.returncode != 0 and job.stage != JobStage.CANCELLED:
-                    raise RuntimeError(f"Transcoding failed for {info.filename}")
+                    err_msg = " | ".join(stderr_recent[-3:]) if stderr_recent else f"exit code {proc.returncode}"
+                    raise RuntimeError(f"Transcoding failed for {info.filename}: {err_msg}")
 
             # If PREVIEW_VIDEO, pipeline completes here
             if job.output_mode == OutputMode.PREVIEW_VIDEO:

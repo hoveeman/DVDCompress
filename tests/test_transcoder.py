@@ -166,3 +166,29 @@ def test_bluray_transcode_command_with_seek_and_duration():
     assert cmd[-1] == "/output/preview.m2ts"
 
 
+def test_hdr_and_dolby_vision_filter_format():
+    """Verify that dvd and bluray filtergraphs force standard yuv420p SDR format."""
+    dvd_cmd = build_dvd_transcode_command(
+        input_file="/media/wolf_hdr.mkv",
+        output_mpg="/output/wolf.mpg",
+        video_bitrate_kbps=5400,
+        audio_stream_idx=1,
+        audio_channels=6,
+    )
+    dvd_str = " ".join(dvd_cmd)
+    assert "format=yuv420p" in dvd_str
+    assert "-map 0:s?" not in dvd_str
+
+    bd_cmd = build_bluray_transcode_command(
+        input_file="/media/wolf_hdr.mkv",
+        output_m2ts="/output/wolf.m2ts",
+        video_bitrate_kbps=25000,
+        audio_stream_idx=1,
+        audio_channels=6,
+    )
+    bd_str = " ".join(bd_cmd)
+    assert "format=yuv420p" in bd_str
+    assert "-map 0:s?" not in bd_str
+
+
+
