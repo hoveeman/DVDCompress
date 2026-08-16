@@ -21,6 +21,7 @@
       burner_device: '',
       burn_speed: 4,
       use_gpu: true,
+    },
     preview: {
       preview_mode: 'preview_video',
     },

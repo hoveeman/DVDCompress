@@ -1,6 +1,8 @@
 """Automated tests for DVDCompress Web UI static assets and endpoints."""
 
 import os
+import shutil
+import subprocess
 import pytest
 from fastapi.testclient import TestClient
 
@@ -119,4 +121,23 @@ def test_preview_modal_and_button_in_html():
     assert 'id="btn-confirm-preview"' in html
     assert 'id="preview-type-video"' in html
     assert 'id="preview-type-iso"' in html
+
+
+def test_javascript_syntax_validity():
+    """Verify that app.js is syntactically valid JavaScript."""
+    res = client.get("/js/app.js")
+    assert res.status_code == 200
+    js_code = res.text
+
+    node_bin = shutil.which("node")
+    if node_bin:
+        proc = subprocess.run(
+            [node_bin, "--check", "-"],
+            input=js_code,
+            capture_output=True,
+            text=True,
+        )
+        assert proc.returncode == 0, f"JavaScript syntax error: {proc.stderr}"
+
+
 
