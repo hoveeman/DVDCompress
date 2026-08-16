@@ -439,7 +439,7 @@ class JobManager:
                 proc = await asyncio.create_subprocess_exec(
                     *burn_cmd,
                     stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
                 )
                 current_process = proc
                 self.active_processes[job_id] = proc
@@ -447,13 +447,15 @@ class JobManager:
                     line = await proc.stdout.readline()
                     if not line:
                         break
-                    decoded = line.decode(errors="replace")
+                    decoded = line.decode(errors="replace").strip()
+                    if decoded:
+                        self.log(job_id, decoded)
                     prog = parse_burn_progress_line(decoded)
                     if "percent" in prog:
                         job.stage_percent = prog["percent"]
                         job.progress_percent = 85.0 + (prog["percent"] * 0.15)
                         job.eta = prog.get("remaining", job.eta)
-                        await self.broadcast(job_id)
+                    await self.broadcast(job_id)
                 await proc.wait()
                 current_process = None
                 if job_id in self.active_processes:

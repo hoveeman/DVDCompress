@@ -115,7 +115,7 @@ async def _run_burn_iso_pipeline(
         proc = await asyncio.create_subprocess_exec(
             *burn_cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
         )
         current_process = proc
 
@@ -123,7 +123,9 @@ async def _run_burn_iso_pipeline(
             line = await proc.stdout.readline()
             if not line:
                 break
-            decoded = line.decode(errors="replace")
+            decoded = line.decode(errors="replace").strip()
+            if decoded:
+                job_manager.log(job_id, decoded)
             prog = parse_burn_progress_line(decoded)
             if "percent" in prog:
                 job.stage_percent = prog["percent"]
@@ -131,7 +133,7 @@ async def _run_burn_iso_pipeline(
                 job.eta = prog.get("remaining", job.eta)
                 if "speed" in prog:
                     job.speed = prog["speed"]
-                await job_manager.broadcast(job_id)
+            await job_manager.broadcast(job_id)
 
         await proc.wait()
         current_process = None
