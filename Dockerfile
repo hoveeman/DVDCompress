@@ -20,20 +20,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pciutils \
     curl \
     ca-certificates \
-    git \
-    cmake \
-    g++ \
-    make \
-    pkg-config \
-    zlib1g-dev \
-    libfreetype6-dev \
-    && git clone --depth 1 https://github.com/justdan96/tsMuxer.git /tmp/tsmuxer-src \
-    && cd /tmp/tsmuxer-src && mkdir build && cd build && cmake ../ -DTSMUXER_STATIC_BUILD=ON && make -j$(nproc) \
-    && find /tmp/tsmuxer-src -type f -perm /111 \( -name "*tsMux*" -o -name "*tsmuxer*" \) -exec cp {} /usr/local/bin/tsMuxeR \; \
+    unzip \
+    && curl -fsSL -o /tmp/tsmuxer.zip https://github.com/justdan96/tsMuxer/releases/download/2.7.0/tsMuxer-2.7.0-linux.zip \
+    && unzip -q /tmp/tsmuxer.zip -d /usr/local/bin/ \
     && ln -sf /usr/local/bin/tsMuxeR /usr/local/bin/tsmuxer \
-    && chmod +x /usr/local/bin/tsMuxeR /usr/local/bin/tsmuxer 2>/dev/null || true \
-    && cd / && rm -rf /tmp/tsmuxer-src \
-    && apt-get purge -y --auto-remove git cmake g++ make pkg-config zlib1g-dev libfreetype6-dev \
+    && chmod +x /usr/local/bin/tsMuxeR /usr/local/bin/tsmuxer \
+    && rm -f /tmp/tsmuxer.zip \
+    && apt-get purge -y --auto-remove unzip \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
