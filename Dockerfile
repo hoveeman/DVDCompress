@@ -28,8 +28,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     libfreetype6-dev \
     && git clone --depth 1 https://github.com/justdan96/tsMuxer.git /tmp/tsmuxer-src \
-    && cd /tmp/tsmuxer-src && mkdir build && cd build && cmake ../ -DTSMUXER_STATIC_BUILD=ON && make tsMuxeR -j$(nproc) \
-    && cp tsMuxer/tsMuxeR /usr/local/bin/ \
+    && cd /tmp/tsmuxer-src && mkdir build && cd build && cmake ../ -DTSMUXER_STATIC_BUILD=ON && make -j$(nproc) \
+    && find . -type f -name "*tsMux*" -exec cp {} /usr/local/bin/tsMuxeR \; \
+    && chmod +x /usr/local/bin/tsMuxeR 2>/dev/null || true \
     && cd / && rm -rf /tmp/tsmuxer-src \
     && apt-get purge -y --auto-remove git cmake g++ make pkg-config zlib1g-dev libfreetype6-dev \
     && rm -rf /var/lib/apt/lists/*
