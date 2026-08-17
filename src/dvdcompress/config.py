@@ -36,3 +36,31 @@ class Settings(BaseModel):
     )
 
 settings = Settings()
+
+
+class AppSettings(BaseModel):
+    max_concurrent_jobs: int = Field(default=5, ge=1, le=20)
+
+
+def load_app_settings(config_dir: Path) -> AppSettings:
+    config_dir = Path(config_dir)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    settings_file = config_dir / "settings.json"
+    if settings_file.exists():
+        try:
+            import json
+            data = json.loads(settings_file.read_text(encoding="utf-8"))
+            return AppSettings(**data)
+        except Exception:
+            pass
+    s = AppSettings()
+    save_app_settings(s, config_dir)
+    return s
+
+
+def save_app_settings(app_settings: AppSettings, config_dir: Path) -> None:
+    config_dir = Path(config_dir)
+    config_dir.mkdir(parents=True, exist_ok=True)
+    settings_file = config_dir / "settings.json"
+    settings_file.write_text(app_settings.model_dump_json(indent=2), encoding="utf-8")
+
