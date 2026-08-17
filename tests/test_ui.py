@@ -146,6 +146,13 @@ def test_subtitle_ui_elements_in_app_js():
     js = res.text
     assert "sub-track-checkbox" in js
     assert "selected_subtitle_indices" in js
+    assert "btn-subs-none" in js
+    assert "btn-subs-all" in js
+    assert "btn-toggle-all-subs" in js
+
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    assert 'id="btn-toggle-all-subs"' in res_html.text
 
 
 def test_passthrough_ui_elements():

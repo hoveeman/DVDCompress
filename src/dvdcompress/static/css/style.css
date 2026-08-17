@@ -400,6 +400,14 @@ button, input, select, textarea {
   color: #fff;
 }
 
+.btn-xs {
+  padding: 0.15rem 0.45rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  border-radius: var(--radius-xs);
+  line-height: 1.2;
+}
+
 .btn-sm {
   padding: 0.3rem 0.6rem;
   font-size: 0.75rem;

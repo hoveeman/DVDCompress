@@ -60,6 +60,10 @@ def generate_spumux_xml(
 """
 
 
+MAX_DVD_SUBPICTURE_STREAMS = 32
+MAX_BLURAY_SUBTITLE_STREAMS = 32
+
+
 def build_spumux_pipeline_command(
     input_mpg_path: str,
     output_mpg_path: str,
@@ -70,8 +74,10 @@ def build_spumux_pipeline_command(
     if not xml_paths:
         raise ValueError("At least one spumux XML configuration path is required")
 
+    # DVD-Video specification strictly limits to 32 subpicture streams (indices 0..31)
+    clamped_xmls = xml_paths[:MAX_DVD_SUBPICTURE_STREAMS]
     stages = []
-    for s_idx, xml_p in enumerate(xml_paths):
+    for s_idx, xml_p in enumerate(clamped_xmls):
         stages.append(f"spumux -m dvd -s {s_idx} -P {shlex.quote(xml_p)}")
 
     # First stage takes stdin from input_mpg_path
@@ -166,7 +172,7 @@ def generate_dvdauthor_xml(
     ]
 
     if subtitles_lang:
-        for lang in subtitles_lang:
+        for lang in subtitles_lang[:MAX_DVD_SUBPICTURE_STREAMS]:
             clean_lang = normalize_lang_code_2(lang)
             xml_lines.append(f'      <subpicture lang="{clean_lang}" />')
 
@@ -220,7 +226,7 @@ def generate_tsmuxer_meta(
         meta_lines.append(f'A_AC3, "{vf}"')
 
     if subtitle_files:
-        for sub in subtitle_files:
+        for sub in subtitle_files[:MAX_BLURAY_SUBTITLE_STREAMS]:
             sub_path = sub.get("path")
             lang = sub.get("lang", "eng")
             is_bitmap = sub.get("is_bitmap", False)

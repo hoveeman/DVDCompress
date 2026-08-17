@@ -593,6 +593,15 @@ class JobManager:
                 if job.selected_subtitle_indices is not None:
                     target_subs = [s for s in info.subtitle_streams if s.index in job.selected_subtitle_indices]
 
+                # Optical disc standards limit subtitle tracks (max 32 subpicture streams for DVD/Blu-ray)
+                if len(target_subs) > 32:
+                    self.log(
+                        job_id,
+                        f"Notice: Media title {t_idx+1} contains {len(target_subs)} subtitle tracks. Clamping to the maximum 32 tracks allowed by optical disc specifications.",
+                        "info",
+                    )
+                    target_subs = target_subs[:32]
+
                 for s_idx, s in enumerate(target_subs):
                     lang = s.language or "eng"
                     is_bmp = (s.codec_name in ("hdmv_pgs_subtitle", "dvdsub"))
@@ -797,9 +806,10 @@ class JobManager:
 
                 # Collect subpicture track languages for the authored titleset
                 dvd_sub_langs = []
-                if extracted_subtitles_by_title:
-                    first_title_subs = [s for s in extracted_subtitles_by_title[0] if not s.get("is_bitmap", False)]
-                    dvd_sub_langs = [s["lang"] for s in first_title_subs]
+                for title_subs in extracted_subtitles_by_title:
+                    valid_subs = [s for s in title_subs if not s.get("is_bitmap", False)]
+                    if len(valid_subs) > len(dvd_sub_langs):
+                        dvd_sub_langs = [s["lang"] for s in valid_subs[:32]]
 
                 xml_content = generate_dvdauthor_xml(
                     titles_mpg=transcoded_files,

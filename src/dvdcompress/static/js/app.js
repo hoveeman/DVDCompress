@@ -629,7 +629,15 @@
               </div>
             `).join('')}
             
-            <div class="stream-group-title" style="margin-top: 4px;">Subtitle Streams (${subCount})</div>
+            <div class="stream-group-header" style="display: flex; align-items: center; justify-content: space-between; margin-top: 6px;">
+              <div class="stream-group-title" style="margin: 0;">Subtitle Streams (${subCount})</div>
+              ${subCount > 0 ? `
+                <div class="stream-group-actions" style="display: flex; align-items: center; gap: 6px;">
+                  <button type="button" class="btn btn-secondary btn-xs btn-subs-none" title="Unselect all subtitle tracks for this title">Select None</button>
+                  <button type="button" class="btn btn-secondary btn-xs btn-subs-all" title="Select all subtitle tracks for this title">Select All</button>
+                </div>
+              ` : ''}
+            </div>
             ${subCount > 0 ? (item.subtitle_streams || []).map(s => `
               <div class="stream-item" style="display: flex; align-items: center; justify-content: space-between;">
                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; margin: 0;">
@@ -652,6 +660,16 @@
       });
       itemCard.querySelector('.btn-item-remove')?.addEventListener('click', () => removePlaylistItem(idx));
 
+      // Per-title subtitle selection actions
+      itemCard.querySelector('.btn-subs-none')?.addEventListener('click', () => {
+        (item.subtitle_streams || []).forEach(s => { s._excluded = true; });
+        renderPlaylist();
+      });
+      itemCard.querySelector('.btn-subs-all')?.addEventListener('click', () => {
+        (item.subtitle_streams || []).forEach(s => { s._excluded = false; });
+        renderPlaylist();
+      });
+
       // Subtitle track selection listeners
       itemCard.querySelectorAll('.sub-track-checkbox').forEach(cb => {
         cb.addEventListener('change', (e) => {
@@ -660,6 +678,7 @@
           if (subStream) {
             subStream._excluded = !e.target.checked;
           }
+          updateGlobalSubtitleButtonState();
         });
       });
 
@@ -669,6 +688,22 @@
     if (countBadge) countBadge.textContent = `${state.playlist.length} Title${state.playlist.length === 1 ? '' : 's'}`;
     if (durText) durText.textContent = formatSeconds(totalDuration);
     if (sizeText) sizeText.textContent = formatBytes(totalSizeBytes);
+    updateGlobalSubtitleButtonState();
+  }
+
+  function updateGlobalSubtitleButtonState() {
+    const btnToggleSubs = document.getElementById('btn-toggle-all-subs');
+    if (!btnToggleSubs) return;
+    const totalSubs = state.playlist.reduce((sum, item) => sum + (item.subtitle_streams || []).length, 0);
+    if (state.playlist.length === 0 || totalSubs === 0) {
+      btnToggleSubs.style.display = 'none';
+      return;
+    }
+    btnToggleSubs.style.display = 'inline-flex';
+    const anySelected = state.playlist.some(item =>
+      (item.subtitle_streams || []).some(s => !s._excluded)
+    );
+    btnToggleSubs.textContent = anySelected ? 'Deselect All Subtitles' : 'Select All Subtitles';
   }
 
   function initPlaylistControls() {
@@ -680,6 +715,24 @@
         renderPlaylist();
         recalculateBudget();
         showToast('Playlist cleared', 'info');
+      });
+    }
+
+    const btnToggleSubs = document.getElementById('btn-toggle-all-subs');
+    if (btnToggleSubs) {
+      btnToggleSubs.addEventListener('click', () => {
+        if (state.playlist.length === 0) return;
+        const anySelected = state.playlist.some(item =>
+          (item.subtitle_streams || []).some(s => !s._excluded)
+        );
+        const shouldExclude = anySelected;
+        state.playlist.forEach(item => {
+          (item.subtitle_streams || []).forEach(s => {
+            s._excluded = shouldExclude;
+          });
+        });
+        renderPlaylist();
+        showToast(shouldExclude ? 'Unselected all subtitles' : 'Selected all subtitles', 'info');
       });
     }
   }

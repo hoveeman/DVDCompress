@@ -86,13 +86,6 @@
         Disc Authoring &amp; Compression
       </button>
 
-      <button class="nav-tab" id="tab-btn-burner" role="tab" aria-selected="false" aria-controls="view-burner" data-target="view-burner">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-        </svg>
-        Burn Existing ISO
-      </button>
-
       <button class="nav-tab" id="tab-btn-jobs" role="tab" aria-selected="false" aria-controls="view-jobs" data-target="view-jobs">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="18" y1="20" x2="18" y2="10"></line>
@@ -101,6 +94,13 @@
         </svg>
         Active Pipeline &amp; History
         <span class="tab-badge" id="active-jobs-badge" style="display: none;">0</span>
+      </button>
+
+      <button class="nav-tab" id="tab-btn-burner" role="tab" aria-selected="false" aria-controls="view-burner" data-target="view-burner">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+        </svg>
+        Burn Existing ISO
       </button>
     </div>
   </nav>
@@ -188,8 +188,9 @@
                   <p class="card-subtitle">Organize and configure title order for disc authoring</p>
                 </div>
               </div>
-              <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                 <span class="badge badge-stream" id="queue-count-badge">0 Titles</span>
+                <button class="btn btn-secondary btn-sm" id="btn-toggle-all-subs" style="display: none;" title="Unselect or select all subtitle tracks across all project titles">Deselect All Subtitles</button>
                 <button class="btn btn-secondary btn-sm" id="btn-clear-queue">Clear All</button>
               </div>
             </header>
@@ -431,77 +432,7 @@
       </div>
     </div>
 
-    <!-- VIEW 2: Standalone Burn Existing ISO -->
-    <div class="tab-view" id="view-burner" role="tabpanel" aria-labelledby="tab-btn-burner">
-      <div style="max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.5rem;">
-        
-        <section class="card" aria-label="Burn Existing ISO Image">
-          <header class="card-header">
-            <div class="card-title-group">
-              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <circle cx="12" cy="12" r="3"></circle>
-              </svg>
-              <div>
-                <h2 class="card-title">Standalone ISO Burner</h2>
-                <p class="card-subtitle">Burn existing pre-built ISO images directly to optical disc media</p>
-              </div>
-            </div>
-          </header>
-
-          <div class="card-body">
-            <div class="form-group">
-              <label class="form-label" for="input-burn-iso-path">ISO Image File Path</label>
-              <input type="text" id="input-burn-iso-path" class="form-input" placeholder="/output/disc_image.iso">
-            </div>
-
-            <div style="margin-bottom: 1.25rem;">
-              <span class="form-label" style="display: block; margin-bottom: 0.5rem;">Quick Select from /output</span>
-              <div id="iso-quick-list" style="display: flex; flex-direction: column; gap: 0.4rem; max-height: 160px; overflow-y: auto;">
-                <!-- Populated dynamically -->
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Disc Media Type</label>
-              <div class="segmented-control" id="control-burner-media-type">
-                <button type="button" class="segmented-option active" data-value="dvd">DVD-R / DVD+R</button>
-                <button type="button" class="segmented-option" data-value="bluray">Blu-ray (BD-R)</button>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label" for="select-standalone-drive">Optical Burner Drive</label>
-              <select id="select-standalone-drive" class="form-select">
-                <option value="">Scanning drives...</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label" for="select-standalone-speed">Burn Speed</label>
-              <select id="select-standalone-speed" class="form-select">
-                <option value="2">2x (Maximum Safety)</option>
-                <option value="4" selected>4x (Recommended)</option>
-                <option value="8">8x (High Speed)</option>
-                <option value="16">Max / 16x</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="card-footer">
-            <button class="btn btn-primary btn-lg" id="btn-start-burn-iso" style="width: 100%;">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-              </svg>
-              Burn ISO to Disc
-            </button>
-          </div>
-        </section>
-
-      </div>
-    </div>
-
-    <!-- VIEW 3: Active Pipeline & Job History -->
+    <!-- VIEW 2: Active Pipeline & Job History -->
     <div class="tab-view" id="view-jobs" role="tabpanel" aria-labelledby="tab-btn-jobs">
       <div style="display: flex; flex-direction: column; gap: 1.5rem;">
         
@@ -641,6 +572,76 @@
               <div class="empty-state-title">No jobs found</div>
               <div class="empty-state-desc">Started authoring or burn tasks will appear here.</div>
             </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+
+    <!-- VIEW 3: Standalone Burn Existing ISO -->
+    <div class="tab-view" id="view-burner" role="tabpanel" aria-labelledby="tab-btn-burner">
+      <div style="max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.5rem;">
+        
+        <section class="card" aria-label="Burn Existing ISO Image">
+          <header class="card-header">
+            <div class="card-title-group">
+              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <div>
+                <h2 class="card-title">Standalone ISO Burner</h2>
+                <p class="card-subtitle">Burn existing pre-built ISO images directly to optical disc media</p>
+              </div>
+            </div>
+          </header>
+
+          <div class="card-body">
+            <div class="form-group">
+              <label class="form-label" for="input-burn-iso-path">ISO Image File Path</label>
+              <input type="text" id="input-burn-iso-path" class="form-input" placeholder="/output/disc_image.iso">
+            </div>
+
+            <div style="margin-bottom: 1.25rem;">
+              <span class="form-label" style="display: block; margin-bottom: 0.5rem;">Quick Select from /output</span>
+              <div id="iso-quick-list" style="display: flex; flex-direction: column; gap: 0.4rem; max-height: 160px; overflow-y: auto;">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Disc Media Type</label>
+              <div class="segmented-control" id="control-burner-media-type">
+                <button type="button" class="segmented-option active" data-value="dvd">DVD-R / DVD+R</button>
+                <button type="button" class="segmented-option" data-value="bluray">Blu-ray (BD-R)</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="select-standalone-drive">Optical Burner Drive</label>
+              <select id="select-standalone-drive" class="form-select">
+                <option value="">Scanning drives...</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="select-standalone-speed">Burn Speed</label>
+              <select id="select-standalone-speed" class="form-select">
+                <option value="2">2x (Maximum Safety)</option>
+                <option value="4" selected>4x (Recommended)</option>
+                <option value="8">8x (High Speed)</option>
+                <option value="16">Max / 16x</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="card-footer">
+            <button class="btn btn-primary btn-lg" id="btn-start-burn-iso" style="width: 100%;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+              </svg>
+              Burn ISO to Disc
+            </button>
           </div>
         </section>
 

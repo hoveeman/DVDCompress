@@ -196,5 +196,37 @@ def test_build_spumux_pipeline_command():
     with pytest.raises(ValueError):
         build_spumux_pipeline_command("/tmp/in.mpg", "/tmp/out.mpg", [])
 
+    # Pipeline clamped to 32 streams (indices 0..31)
+    many_xmls = [f"/tmp/sub_{i}.xml" for i in range(45)]
+    cmd_many = build_spumux_pipeline_command(
+        input_mpg_path="/tmp/input.mpg",
+        output_mpg_path="/tmp/output.mpg",
+        xml_paths=many_xmls,
+    )
+    assert cmd_many.count("spumux -m dvd -s ") == 32
+    assert "spumux -m dvd -s 0" in cmd_many
+    assert "spumux -m dvd -s 31" in cmd_many
+    assert "spumux -m dvd -s 32" not in cmd_many
+
+
+def test_generate_dvdauthor_xml_clamps_to_32_subpicture_streams():
+    languages = [f"l{i}" for i in range(50)]
+    xml = generate_dvdauthor_xml(
+        titles_mpg=["/tmp/title1.mpg"],
+        chapters_sec=[[0.0, 300.0]],
+        subtitles_lang=languages,
+    )
+    assert xml.count("<subpicture ") == 32
+
+
+def test_generate_tsmuxer_meta_clamps_to_32_subtitles():
+    subs = [{"path": f"/tmp/sub_{i}.srt", "lang": "eng", "is_bitmap": False} for i in range(40)]
+    meta = generate_tsmuxer_meta(
+        video_files=["/tmp/track1.m2ts"],
+        subtitle_files=subs,
+    )
+    assert meta.count("S_TEXT/UTF8") == 32
+
+
 
 
