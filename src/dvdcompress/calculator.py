@@ -94,63 +94,105 @@ def calculate_bitrate_budget(
     used_mb = (total_project_bits / 8) / (1000 * 1000)
     capacity_percent = min(100.0, (used_mb / target_mb) * 100.0)
 
-    # Determine optimal media recommendation (Single vs Dual Layer)
+    # Determine optimal media recommendation (Single vs Dual Layer) with exact bitrates
     recommended_disc_type = None
     recommendation_reason = None
     mins = round(total_duration_sec / 60.0, 1)
 
     if is_dvd:
-        if total_duration_sec <= 7200:  # <= 120 minutes (2 hours)
+        dvd5_target_bits = 4300.0 * 1000 * 1000 * 8 * 0.96
+        dvd5_v_kbps = min(
+            DVD_MAX_VIDEO_BITRATE,
+            int(((dvd5_target_bits - audio_bits) / total_duration_sec) / 1000),
+        )
+        dvd5_v_kbps = max(DVD_MIN_VIDEO_BITRATE, dvd5_v_kbps)
+
+        dvd9_target_bits = 7850.0 * 1000 * 1000 * 8 * 0.96
+        dvd9_v_kbps = min(
+            DVD_MAX_VIDEO_BITRATE,
+            int(((dvd9_target_bits - audio_bits) / total_duration_sec) / 1000),
+        )
+        dvd9_v_kbps = max(DVD_MIN_VIDEO_BITRATE, dvd9_v_kbps)
+
+        if dvd5_v_kbps >= DVD_MAX_VIDEO_BITRATE:
             recommended_disc_type = DiscType.DVD5
             if disc_type == DiscType.DVD9:
                 recommendation_reason = (
-                    f"Single-Layer (DVD-5) is recommended for {mins:.0f} min runtime. "
-                    "It fits on a standard 4.7 GB disc at maximum visual quality (8.0 Mbps). "
-                    "Dual-Layer (DVD-9) is not needed."
+                    f"Single-Layer (DVD-5) is recommended for {mins:.0f} min: "
+                    "fits on a 4.7 GB disc at the maximum 8,000 kbps DVD quality ceiling. "
+                    "An 8.5 GB Dual-Layer disc is not needed."
                 )
             else:
                 recommendation_reason = (
-                    f"Single-Layer (DVD-5) is optimal for {mins:.0f} min runtime. "
-                    "Encodes at maximum allowable 8,000 kbps DVD quality."
+                    f"Single-Layer (DVD-5) is optimal for {mins:.0f} min: "
+                    "encodes at the maximum allowable 8,000 kbps DVD quality."
                 )
-        else:  # > 120 minutes
+        elif dvd9_v_kbps > dvd5_v_kbps:
+            if disc_type == DiscType.DVD5:
+                recommended_disc_type = DiscType.DVD9
+                recommendation_reason = (
+                    f"DVD-5 encodes this {mins:.0f} min title at {dvd5_v_kbps:,} kbps ({capacity_percent:.0f}% disc usage). "
+                    f"Switch to Dual-Layer (DVD-9) to increase quality to {dvd9_v_kbps:,} kbps."
+                )
+            else:
+                recommended_disc_type = DiscType.DVD9
+                recommendation_reason = (
+                    f"Dual-Layer (DVD-9) is optimal for {mins:.0f} min: "
+                    f"provides {dvd9_v_kbps:,} kbps visual quality (DVD-5 is limited to {dvd5_v_kbps:,} kbps)."
+                )
+        else:
             recommended_disc_type = DiscType.DVD9
             if disc_type == DiscType.DVD5:
                 recommendation_reason = (
-                    f"Dual-Layer (DVD-9) is recommended for {mins:.0f} min runtime. "
-                    f"DVD-5 requires compressing video down to {video_bitrate} kbps. "
-                    "Switching to an 8.5 GB DVD-9 preserves full visual quality."
+                    f"Dual-Layer (DVD-9) is recommended for {mins:.0f} min: "
+                    f"DVD-5 requires heavy compression ({dvd5_v_kbps:,} kbps). "
+                    f"DVD-9 preserves {dvd9_v_kbps:,} kbps quality."
                 )
             else:
                 recommendation_reason = (
-                    f"Dual-Layer (DVD-9) is optimal for {mins:.0f} min runtime. "
-                    "Provides 8.5 GB capacity for high bitrate across long footage."
+                    f"Dual-Layer (DVD-9) is optimal for {mins:.0f} min: "
+                    f"allocates {dvd9_v_kbps:,} kbps across extended content."
                 )
     else:
-        if total_duration_sec <= 8100:  # <= 135 minutes (2.25 hours)
+        bd25_target_bits = 23000.0 * 1000 * 1000 * 8 * 0.96
+        bd25_v_kbps = min(
+            BD_MAX_VIDEO_BITRATE,
+            int(((bd25_target_bits - audio_bits) / total_duration_sec) / 1000),
+        )
+        bd25_v_kbps = max(BD_MIN_VIDEO_BITRATE, bd25_v_kbps)
+
+        bd50_target_bits = 46000.0 * 1000 * 1000 * 8 * 0.96
+        bd50_v_kbps = min(
+            BD_MAX_VIDEO_BITRATE,
+            int(((bd50_target_bits - audio_bits) / total_duration_sec) / 1000),
+        )
+        bd50_v_kbps = max(BD_MIN_VIDEO_BITRATE, bd50_v_kbps)
+
+        if bd25_v_kbps >= BD_MAX_VIDEO_BITRATE:
             recommended_disc_type = DiscType.BD25
             if disc_type in (DiscType.BD50, DiscType.BD66, DiscType.BD100, DiscType.BD128):
                 recommendation_reason = (
-                    f"Single-Layer (BD-25) is recommended for {mins:.0f} min runtime. "
-                    "Fits on a 25 GB disc at maximum 35 Mbps Blu-ray master quality. "
+                    f"Single-Layer (BD-25) is recommended for {mins:.0f} min: "
+                    "fits on a 25 GB disc at the maximum 35 Mbps master quality ceiling. "
                     "50 GB+ is not needed."
                 )
             else:
                 recommendation_reason = (
-                    f"Single-Layer (BD-25) is optimal for {mins:.0f} min runtime. "
-                    "Encodes at maximum 35 Mbps Blu-ray master quality."
+                    f"Single-Layer (BD-25) is optimal for {mins:.0f} min: "
+                    "encodes at the maximum 35 Mbps Blu-ray master quality."
                 )
-        elif total_duration_sec <= 16200:  # <= 270 minutes (4.5 hours)
-            recommended_disc_type = DiscType.BD50
+        elif bd50_v_kbps > bd25_v_kbps:
             if disc_type == DiscType.BD25:
+                recommended_disc_type = DiscType.BD50
                 recommendation_reason = (
-                    f"Dual-Layer (BD-50) is recommended for {mins:.0f} min runtime. "
-                    "Provides 50 GB capacity to avoid compressing video below master quality."
+                    f"BD-25 encodes this {mins:.0f} min title at {bd25_v_kbps:,} kbps. "
+                    f"Switch to Dual-Layer (BD-50) to increase quality to {bd50_v_kbps:,} kbps."
                 )
             else:
+                recommended_disc_type = DiscType.BD50
                 recommendation_reason = (
-                    f"Dual-Layer (BD-50) is optimal for {mins:.0f} min runtime. "
-                    "Provides 50 GB capacity for high bitrate across all titles."
+                    f"Dual-Layer (BD-50) is optimal for {mins:.0f} min: "
+                    f"provides {bd50_v_kbps:,} kbps visual quality (BD-25 is limited to {bd25_v_kbps:,} kbps)."
                 )
         else:
             recommended_disc_type = DiscType.BD66 if disc_type == DiscType.BD66 else DiscType.BD100

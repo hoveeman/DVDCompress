@@ -233,24 +233,35 @@ def test_preview_output_modes_and_request_model():
 
 
 def test_single_vs_dual_layer_recommendations():
-    # 1. 90-minute movie (5400s) on DVD-9 -> Recommends DVD-5
-    budget_short_dvd9 = calculate_bitrate_budget(total_duration_sec=5400, disc_type=DiscType.DVD9)
+    # 1. 50-minute video (3000s) on DVD-9 -> Recommends DVD-5 (both hit 8,000 kbps max quality)
+    budget_short_dvd9 = calculate_bitrate_budget(total_duration_sec=3000, disc_type=DiscType.DVD9)
     assert budget_short_dvd9.recommended_disc_type == DiscType.DVD5
     assert "Single-Layer (DVD-5) is recommended" in budget_short_dvd9.recommendation_reason
 
-    # 2. 90-minute movie on DVD-5 -> Confirms DVD-5 is optimal
-    budget_short_dvd5 = calculate_bitrate_budget(total_duration_sec=5400, disc_type=DiscType.DVD5)
+    # 2. 50-minute video on DVD-5 -> Confirms DVD-5 is optimal (8,000 kbps max quality)
+    budget_short_dvd5 = calculate_bitrate_budget(total_duration_sec=3000, disc_type=DiscType.DVD5)
     assert budget_short_dvd5.recommended_disc_type == DiscType.DVD5
     assert "Single-Layer (DVD-5) is optimal" in budget_short_dvd5.recommendation_reason
+    assert "8,000 kbps" in budget_short_dvd5.recommendation_reason
 
-    # 3. 200-minute multi-episode project (12000s) on DVD-5 -> Recommends DVD-9
+    # 3. 112-minute movie (6720s) on DVD-5 -> Explains 4,336 kbps and option to switch to DVD-9 for 8,000 kbps
+    budget_pitch_perfect = calculate_bitrate_budget(
+        total_duration_sec=6720,
+        disc_type=DiscType.DVD5,
+        audio_tracks_kbps=[576],
+    )
+    assert "DVD-5 encodes this 112 min title at 4,337 kbps" in budget_pitch_perfect.recommendation_reason or "4,33" in budget_pitch_perfect.recommendation_reason
+    assert "Switch to Dual-Layer (DVD-9) to increase quality to 8,000 kbps" in budget_pitch_perfect.recommendation_reason
+
+    # 4. 200-minute multi-episode project (12000s) on DVD-5 -> Recommends DVD-9
     budget_long_dvd5 = calculate_bitrate_budget(total_duration_sec=12000, disc_type=DiscType.DVD5)
     assert budget_long_dvd5.recommended_disc_type == DiscType.DVD9
-    assert "Dual-Layer (DVD-9) is recommended" in budget_long_dvd5.recommendation_reason
+    assert "Switch to Dual-Layer (DVD-9) to increase quality" in budget_long_dvd5.recommendation_reason
 
-    # 4. 100-minute movie on BD-50 -> Recommends BD-25
-    budget_short_bd50 = calculate_bitrate_budget(total_duration_sec=6000, disc_type=DiscType.BD50)
+    # 5. 60-minute video on BD-50 -> Recommends BD-25
+    budget_short_bd50 = calculate_bitrate_budget(total_duration_sec=3600, disc_type=DiscType.BD50)
     assert budget_short_bd50.recommended_disc_type == DiscType.BD25
     assert "Single-Layer (BD-25) is recommended" in budget_short_bd50.recommendation_reason
+
 
 
