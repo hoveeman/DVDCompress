@@ -250,4 +250,47 @@ def test_parse_ffprobe_hdr_detection():
     assert info_sdr.is_hdr is False
 
 
+@pytest.mark.asyncio
+async def test_analyze_video_complexity(tmp_path):
+    from dvdcompress.models import DiscType, MediaInfo, AudioStreamInfo
+    from dvdcompress.probe import analyze_video_complexity
+    from unittest.mock import patch, AsyncMock
+
+    test_file = tmp_path / "movie.mkv"
+    test_file.write_bytes(b"dummy video")
+
+    mock_info = MediaInfo(
+        path=str(test_file),
+        filename="movie.mkv",
+        duration_sec=6720.0,  # 112 mins
+        width=1920,
+        height=1080,
+        aspect_ratio="16:9",
+        frame_rate=23.976,
+        video_codec="hevc",
+        audio_streams=[AudioStreamInfo(index=1, codec_name="ac3", channels=6, channel_layout="5.1", bitrate=448000)],
+        subtitle_streams=[],
+        chapters_count=5,
+        chapter_times=[0.0, 600.0, 1200.0],
+        size_bytes=1000000000,
+    )
+
+    with patch("dvdcompress.probe.probe_media_file", new_callable=AsyncMock) as mock_probe:
+        mock_probe.return_value = mock_info
+        with patch("dvdcompress.probe.sample_snippet_bitrate", new_callable=AsyncMock) as mock_sample:
+            mock_sample.return_value = 3250.0  # 3,250 kbps measured
+
+            res = await analyze_video_complexity(
+                input_files=[str(test_file)],
+                disc_type=DiscType.DVD5,
+            )
+
+            assert res.empirical_video_bitrate_kbps == 3250
+            assert 2.5 <= res.projected_iso_size_gb <= 3.6
+            assert res.recommended_disc_type == DiscType.DVD5
+            assert "Low" in res.complexity_level or "Clean" in res.complexity_level
+            assert res.sample_count > 0
+
+
+
 

@@ -241,6 +241,31 @@ def test_disc_recommendation_ui_elements():
     assert "setDiscType" in js
 
 
+def test_complexity_sampling_ui_elements():
+    # 1. HTML button & container
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    html = res_html.text
+    assert 'id="btn-analyze-complexity"' in html
+    assert 'id="gauge-complexity-container"' in html
+
+    # 2. CSS styles
+    res_css = client.get("/css/style.css")
+    assert res_css.status_code == 200
+    css = res_css.text
+    assert ".complexity-result-box" in css
+    assert ".complexity-badge" in css
+
+    # 3. JavaScript wiring
+    res_js = client.get("/js/app.js")
+    assert res_js.status_code == 200
+    js = res_js.text
+    assert "btn-analyze-complexity" in js
+    assert "runComplexityAnalysis" in js
+    assert "/api/analyze-complexity" in js
+
+
+
 
 
 

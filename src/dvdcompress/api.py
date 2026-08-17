@@ -22,13 +22,15 @@ from dvdcompress.job_manager import ACTIVE_STAGES, Job, JobManager, JobStage
 from dvdcompress.models import (
     AspectRatio,
     BitrateBudget,
+    ComplexityAnalysisRequest,
+    ComplexityAnalysisResult,
     DiscType,
     MediaInfo,
     MenuMode,
     OutputMode,
     TVStandard,
 )
-from dvdcompress.probe import probe_media_file
+from dvdcompress.probe import analyze_video_complexity, probe_media_file
 from dvdcompress.system_info import get_hardware_telemetry
 
 app = FastAPI(title="DVDCompress API", version="1.0.0")
@@ -290,6 +292,23 @@ def calculate_budget(req: CalculateRequest):
         audio_tracks_kbps=req.audio_tracks_kbps,
         video_count=req.video_count,
     )
+
+
+@app.post("/api/analyze-complexity", response_model=ComplexityAnalysisResult)
+async def analyze_complexity_endpoint(req: ComplexityAnalysisRequest):
+    for f in req.input_files:
+        if not os.path.exists(f):
+            raise HTTPException(status_code=404, detail=f"File not found: {f}")
+    try:
+        return await analyze_video_complexity(
+            input_files=req.input_files,
+            disc_type=req.disc_type,
+            tv_standard=req.tv_standard,
+            aspect_ratio=req.aspect_ratio,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Complexity analysis failed: {str(e)}")
+
 
 
 @app.get("/api/drives", response_model=List[OpticalDrive])

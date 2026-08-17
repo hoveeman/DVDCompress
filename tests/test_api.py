@@ -622,6 +622,38 @@ def test_api_clear_jobs_history():
     assert job_manager.get_job(job_id2) is None
 
 
+def test_api_analyze_complexity(tmp_path):
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"dummy")
+
+    with patch("dvdcompress.api.analyze_video_complexity", new_callable=AsyncMock) as mock_analyze:
+        from dvdcompress.models import ComplexityAnalysisResult
+        mock_analyze.return_value = ComplexityAnalysisResult(
+            empirical_video_bitrate_kbps=3200,
+            projected_iso_size_mb=2900.0,
+            projected_iso_size_gb=2.9,
+            recommended_disc_type=DiscType.DVD5,
+            recommendation_text="Optimal for DVD-5",
+            complexity_level="Low (Clean Digital)",
+            sample_count=5,
+        )
+
+        res = client.post(
+            "/api/analyze-complexity",
+            json={
+                "input_files": [str(clip)],
+                "disc_type": "dvd5",
+            },
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["empirical_video_bitrate_kbps"] == 3200
+        assert data["projected_iso_size_gb"] == 2.9
+        assert data["recommended_disc_type"] == "dvd5"
+        assert "Low" in data["complexity_level"]
+
+
+
 
 
 

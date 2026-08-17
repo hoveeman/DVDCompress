@@ -1,10 +1,18 @@
-"""Media prober and stream analyzer module using ffprobe."""
-
+import asyncio
 import json
 import os
-import asyncio
-from typing import Dict, Any
-from dvdcompress.models import MediaInfo, AudioStreamInfo, SubtitleStreamInfo
+import re
+from typing import Any, Dict, List, Optional
+
+from dvdcompress.models import (
+    AspectRatio,
+    AudioStreamInfo,
+    ComplexityAnalysisResult,
+    DiscType,
+    MediaInfo,
+    SubtitleStreamInfo,
+    TVStandard,
+)
 
 async def run_ffprobe_json(file_path: str) -> Dict[str, Any]:
     """Execute ffprobe asynchronously to extract JSON metadata for a media file."""
@@ -150,3 +158,248 @@ async def probe_media_file(file_path: str) -> MediaInfo:
     """Probe a media file using ffprobe and return parsed MediaInfo."""
     data = await run_ffprobe_json(file_path)
     return parse_ffprobe_output(file_path, data)
+
+
+async def sample_snippet_bitrate(
+    input_file: str,
+    seek_sec: float,
+    sample_duration_sec: float = 2.0,
+    is_dvd: bool = True,
+    tv_standard: TVStandard = TVStandard.AUTO,
+    aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9,
+    is_hdr: bool = False,
+) -> Optional[float]:
+    """Encode a short snippet at maximum target visual quality and return the empirical bitrate in kbps."""
+    is_ntsc = tv_standard in (TVStandard.NTSC, TVStandard.AUTO)
+    is_16_9 = aspect_ratio == AspectRatio.RATIO_16_9
+
+    if is_dvd:
+        if is_ntsc:
+            final_w, final_h = 720, 480
+            sar_val = "32/27" if is_16_9 else "8/9"
+        else:
+            final_w, final_h = 720, 576
+            sar_val = "64/45" if is_16_9 else "16/15"
+
+        vf = f"scale={final_w}:{final_h},setsar={sar_val},format=yuv420p"
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            f"{seek_sec:.2f}",
+            "-i",
+            input_file,
+            "-t",
+            f"{sample_duration_sec:.2f}",
+            "-map",
+            "0:v:0",
+            "-c:v",
+            "mpeg2video",
+            "-b:v",
+            "8000k",
+            "-maxrate",
+            "8500k",
+            "-bufsize",
+            "1835k",
+            "-q:v",
+            "2",
+            "-vf",
+            vf,
+            "-f",
+            "rawvideo",
+            "/dev/null",
+        ]
+    else:
+        # Blu-ray sampling at 1080p CRF 18
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-ss",
+            f"{seek_sec:.2f}",
+            "-i",
+            input_file,
+            "-t",
+            f"{sample_duration_sec:.2f}",
+            "-map",
+            "0:v:0",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "18",
+            "-maxrate",
+            "35000k",
+            "-bufsize",
+            "30000k",
+            "-vf",
+            "scale=1920:1080,format=yuv420p",
+            "-f",
+            "rawvideo",
+            "/dev/null",
+        ]
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr_bytes = await proc.communicate()
+        stderr_text = stderr_bytes.decode(errors="replace")
+
+        # Extract bitrate from ffmpeg stats line
+        match = re.search(r"bitrate=\s*([0-9.]+)\s*kbits/s", stderr_text)
+        if match:
+            return float(match.group(1))
+
+        # Fallback: extract video data size
+        size_match = re.search(r"video:\s*([0-9.]+)\s*(KiB|kB|MB|B)", stderr_text)
+        if size_match:
+            val = float(size_match.group(1))
+            unit = size_match.group(2)
+            if unit == "KiB":
+                kb = val * 1.024
+            elif unit == "MB":
+                kb = val * 1024 * 1.024
+            elif unit == "B":
+                kb = val / 1024
+            else:
+                kb = val
+            bitrate_kbps = (kb * 8) / sample_duration_sec
+            return bitrate_kbps
+    except Exception:
+        pass
+    return None
+
+
+async def analyze_video_complexity(
+    input_files: List[str],
+    disc_type: DiscType = DiscType.DVD5,
+    tv_standard: TVStandard = TVStandard.AUTO,
+    aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9,
+) -> ComplexityAnalysisResult:
+    """Run multi-point fast snippet sampling across media files to estimate real-world VBR output size."""
+    if not input_files:
+        raise ValueError("No input files provided for complexity analysis.")
+
+    is_dvd = disc_type in (DiscType.DVD5, DiscType.DVD9)
+    media_infos = []
+    for f in input_files:
+        if os.path.exists(f):
+            info = await probe_media_file(f)
+            media_infos.append(info)
+
+    if not media_infos:
+        raise ValueError("Could not probe any of the provided input files.")
+
+    total_duration_sec = sum(m.duration_sec for m in media_infos)
+    if total_duration_sec <= 0:
+        total_duration_sec = 3600.0
+
+    # Collect audio bitrates
+    total_audio_kbps = 0
+    for m in media_infos:
+        if m.audio_streams:
+            for a in m.audio_streams:
+                total_audio_kbps += int(a.bitrate / 1000) if a.bitrate else 192
+        else:
+            total_audio_kbps += 192
+
+    avg_audio_kbps = max(192, total_audio_kbps // len(media_infos))
+
+    # Sample each file at multiple points
+    all_sample_bitrates = []
+    sample_fractions = [0.15, 0.35, 0.50, 0.70, 0.85]
+
+    for m in media_infos:
+        dur = m.duration_sec
+        if dur <= 5:
+            seek_points = [0.5]
+        else:
+            seek_points = [max(1.0, dur * frac) for frac in sample_fractions]
+
+        for sp in seek_points:
+            rate = await sample_snippet_bitrate(
+                input_file=m.path,
+                seek_sec=sp,
+                sample_duration_sec=2.0,
+                is_dvd=is_dvd,
+                tv_standard=tv_standard,
+                aspect_ratio=aspect_ratio,
+                is_hdr=m.is_hdr,
+            )
+            if rate is not None and rate > 100:
+                all_sample_bitrates.append(rate)
+
+    if all_sample_bitrates:
+        avg_video_bitrate = int(sum(all_sample_bitrates) / len(all_sample_bitrates))
+    else:
+        avg_video_bitrate = 3800 if is_dvd else 22000
+
+    max_ceiling = 8000 if is_dvd else 35000
+    min_floor = 1500 if is_dvd else 5000
+    empirical_video_bitrate = max(min_floor, min(max_ceiling, avg_video_bitrate))
+
+    # Calculate projected ISO size
+    mux_overhead_kbps = int((empirical_video_bitrate + avg_audio_kbps) * 0.04)
+    total_stream_kbps = empirical_video_bitrate + avg_audio_kbps + mux_overhead_kbps
+    projected_bytes = (total_stream_kbps * 1000 * total_duration_sec) / 8
+    projected_mb = round(projected_bytes / (1000 * 1000), 1)
+    projected_gb = round(projected_mb / 1000.0, 2)
+
+    # Complexity classification
+    if is_dvd:
+        if empirical_video_bitrate <= 4000:
+            complexity_level = "Low (Clean Digital / High Compression Efficiency)"
+        elif empirical_video_bitrate <= 6200:
+            complexity_level = "Medium (Standard Film / Balanced Detail)"
+        else:
+            complexity_level = "High (Heavy 35mm Grain / Fast Motion)"
+    else:
+        if empirical_video_bitrate <= 18000:
+            complexity_level = "Low (Clean Digital 1080p)"
+        elif empirical_video_bitrate <= 28000:
+            complexity_level = "Medium (Standard HD Film)"
+        else:
+            complexity_level = "High (Ultra-Detailed / Heavy Grain)"
+
+    mins = round(total_duration_sec / 60.0, 1)
+    if is_dvd:
+        if projected_mb <= 4300.0:
+            recommended_disc_type = DiscType.DVD5
+            recommendation_text = (
+                f"Fast sample analysis shows a {complexity_level.split(' ')[0].lower()} complexity factor. "
+                f"Projected final size is ~{projected_gb:.1f} GB ({projected_mb:,.0f} MB) at 100% visual quality. "
+                "Single-Layer (DVD-5) is 100% optimal with zero quality compromise."
+            )
+        else:
+            recommended_disc_type = DiscType.DVD9
+            recommendation_text = (
+                f"Fast sample analysis projects ~{projected_gb:.1f} GB ({projected_mb:,.0f} MB) output. "
+                "Dual-Layer (DVD-9) is recommended to prevent compression down to 4.3 GB."
+            )
+    else:
+        if projected_mb <= 23000.0:
+            recommended_disc_type = DiscType.BD25
+            recommendation_text = (
+                f"Fast sample analysis projects ~{projected_gb:.1f} GB output at Blu-ray master quality. "
+                "Single-Layer (BD-25) is 100% optimal."
+            )
+        else:
+            recommended_disc_type = DiscType.BD50
+            recommendation_text = (
+                f"Fast sample analysis projects ~{projected_gb:.1f} GB output. "
+                "Dual-Layer (BD-50) is recommended."
+            )
+
+    return ComplexityAnalysisResult(
+        empirical_video_bitrate_kbps=empirical_video_bitrate,
+        projected_iso_size_mb=projected_mb,
+        projected_iso_size_gb=projected_gb,
+        recommended_disc_type=recommended_disc_type,
+        recommendation_text=recommendation_text,
+        complexity_level=complexity_level,
+        sample_count=len(all_sample_bitrates),
+    )
+

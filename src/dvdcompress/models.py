@@ -100,3 +100,21 @@ class ProjectConfig(BaseModel):
     disc_label: str = "DVD_VIDEO"
     burn_device: Optional[str] = None
     burn_speed: int = 4
+
+
+class ComplexityAnalysisRequest(BaseModel):
+    input_files: List[str]
+    disc_type: DiscType = DiscType.DVD5
+    tv_standard: TVStandard = TVStandard.AUTO
+    aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9
+
+
+class ComplexityAnalysisResult(BaseModel):
+    empirical_video_bitrate_kbps: int
+    projected_iso_size_mb: float
+    projected_iso_size_gb: float
+    recommended_disc_type: DiscType
+    recommendation_text: str
+    complexity_level: str
+    sample_count: int
+

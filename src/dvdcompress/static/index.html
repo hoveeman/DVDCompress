@@ -234,9 +234,10 @@
                 </svg>
                 <div>
                   <h2 class="card-title">Disc Capacity Gauge</h2>
-                  <p class="card-subtitle" id="gauge-subtitle">Target: DVD-5 (4,480 MB)</p>
+                  <p class="card-subtitle" id="gauge-subtitle">Target: DVD-5 (4,300 MB)</p>
                 </div>
               </div>
+              <button type="button" class="btn btn-secondary btn-sm" id="btn-analyze-complexity" title="Run a fast 2-second multi-point sample to measure empirical VBR size and complexity" style="white-space: nowrap;">⚡ Fast Sample</button>
             </header>
 
             <div class="card-body">
@@ -275,7 +276,7 @@
                   </div>
                   <div class="stat-box">
                     <span class="stat-label">Disc Usage</span>
-                    <span class="stat-value" id="stat-capacity-usage">0 / 4,480 MB</span>
+                    <span class="stat-value" id="stat-capacity-usage">0 / 4,300 MB</span>
                   </div>
                 </div>
 
@@ -285,6 +286,10 @@
 
                 <div id="gauge-recommendation-container">
                   <!-- Injected recommendations -->
+                </div>
+
+                <div id="gauge-complexity-container" style="display: none;">
+                  <!-- Injected fast complexity result box -->
                 </div>
               </div>
             </div>

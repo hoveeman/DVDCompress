@@ -335,6 +335,12 @@
       });
     }
 
+    // Fast Complexity Sample Button
+    const btnComplexity = document.getElementById('btn-analyze-complexity');
+    if (btnComplexity) {
+      btnComplexity.addEventListener('click', runComplexityAnalysis);
+    }
+
     // Refresh & Clear Jobs Buttons
     const btnRefreshJobs = document.getElementById('btn-refresh-jobs');
     if (btnRefreshJobs) {
@@ -806,6 +812,11 @@
       if (warningsContainer) warningsContainer.innerHTML = '';
       if (recContainer) recContainer.innerHTML = '';
       if (formatRecChip) formatRecChip.style.display = 'none';
+      const complexityContainer = document.getElementById('gauge-complexity-container');
+      if (complexityContainer) {
+        complexityContainer.style.display = 'none';
+        complexityContainer.innerHTML = '';
+      }
       if (btnStart) btnStart.disabled = true;
       if (btnPreview) btnPreview.disabled = true;
       return;
@@ -942,6 +953,107 @@
 
     } catch (err) {
       console.error('Calculation error:', err);
+    }
+  }
+
+  // Fast Video Complexity & Size Analyzer
+  async function runComplexityAnalysis() {
+    const btnComplexity = document.getElementById('btn-analyze-complexity');
+    const container = document.getElementById('gauge-complexity-container');
+    if (!state.playlist || state.playlist.length === 0) {
+      showToast('Please add video files to the project first', 'info');
+      return;
+    }
+
+    const origBtnText = btnComplexity ? btnComplexity.innerHTML : '⚡ Fast Sample';
+    if (btnComplexity) {
+      btnComplexity.disabled = true;
+      btnComplexity.innerHTML = '⚡ Sampling...';
+    }
+
+    try {
+      const res = await fetch('/api/analyze-complexity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input_files: state.playlist.map(item => item.path),
+          disc_type: state.config.disc_type,
+          tv_standard: state.config.tv_standard,
+          aspect_ratio: state.config.aspect_ratio,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+
+      const result = await res.json();
+      state.complexityResult = result;
+
+      if (container) {
+        container.style.display = 'block';
+        const isOptimal = result.recommended_disc_type === state.config.disc_type;
+        const badgeClass = result.complexity_level.toLowerCase().includes('low')
+          ? 'low'
+          : result.complexity_level.toLowerCase().includes('medium')
+          ? 'medium'
+          : 'high';
+
+        container.innerHTML = `
+          <div class="complexity-result-box">
+            <div class="complexity-header">
+              <div class="complexity-title">
+                <span>⚡ Measured VBR Output</span>
+              </div>
+              <span class="complexity-badge ${badgeClass}">${escapeHtml(result.complexity_level.split(' ')[0])}</span>
+            </div>
+
+            <div class="complexity-metrics">
+              <div class="complexity-metric-item">
+                <span class="complexity-metric-label">Projected Final Size</span>
+                <span class="complexity-metric-value">${result.projected_iso_size_gb.toFixed(1)} GB</span>
+              </div>
+              <div class="complexity-metric-item">
+                <span class="complexity-metric-label">Empirical VBR Bitrate</span>
+                <span class="complexity-metric-value">${result.empirical_video_bitrate_kbps.toLocaleString()} kbps</span>
+              </div>
+            </div>
+
+            <div class="complexity-desc">
+              ${escapeHtml(result.recommendation_text)}
+            </div>
+
+            ${
+              !isOptimal && result.recommended_disc_type
+                ? `<div style="margin-top: 0.25rem;">
+                     <button type="button" class="btn btn-secondary btn-xs" id="btn-apply-complexity-disc">
+                       Switch to ${(result.recommended_disc_type || '').toUpperCase()}
+                     </button>
+                   </div>`
+                : ''
+            }
+          </div>
+        `;
+
+        const btnApply = document.getElementById('btn-apply-complexity-disc');
+        if (btnApply) {
+          btnApply.onclick = () => {
+            setDiscType(result.recommended_disc_type);
+            showToast(`Switched target format to ${(result.recommended_disc_type || '').toUpperCase()}`, 'info');
+          };
+        }
+      }
+
+      showToast(`Sample completed: Projected ISO ~${result.projected_iso_size_gb.toFixed(1)} GB`, 'success');
+    } catch (err) {
+      console.error('Failed to run complexity analysis:', err);
+      showToast(`Sample analysis failed: ${err.message}`, 'error');
+    } finally {
+      if (btnComplexity) {
+        btnComplexity.disabled = false;
+        btnComplexity.innerHTML = origBtnText;
+      }
     }
   }
 
