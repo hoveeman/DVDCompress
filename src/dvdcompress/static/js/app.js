@@ -37,10 +37,12 @@
     activeJobId: null,
     activeWebSocket: null,
     jobs: [],
+    maxConcurrentJobs: 5,
     calculatedBudget: null,
     terminalLogs: [],
     autoScroll: true,
   };
+
 
   // Helper: Format Seconds to HH:MM:SS
   function formatSeconds(seconds) {
@@ -1401,14 +1403,71 @@
     }
   }
 
+  // App Settings & Concurrency Control
+  async function loadSettings() {
+    try {
+      const res = await fetch('/api/settings');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.max_concurrent_jobs) {
+        state.maxConcurrentJobs = data.max_concurrent_jobs;
+        updateSlotsDisplay();
+      }
+    } catch (err) {
+      console.error('Failed to load settings:', err);
+    }
+  }
+
+  function updateSlotsDisplay() {
+    const display = document.getElementById('slots-value');
+    if (display) {
+      display.textContent = state.maxConcurrentJobs || 5;
+    }
+  }
+
+  async function updateMaxConcurrentJobs(delta) {
+    const current = state.maxConcurrentJobs || 5;
+    const newLimit = Math.max(1, Math.min(20, current + delta));
+    if (newLimit === current) return;
+
+    state.maxConcurrentJobs = newLimit;
+    updateSlotsDisplay();
+
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ max_concurrent_jobs: newLimit }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      showToast(`Concurrent job slots set to ${newLimit}`, 'info');
+      loadJobHistory();
+    } catch (err) {
+      showToast(`Failed to update concurrent slots: ${err.message}`, 'error');
+    }
+  }
+
+  function initSlotsControl() {
+    const btnDec = document.getElementById('btn-slots-decrement');
+    const btnInc = document.getElementById('btn-slots-increment');
+    if (btnDec) {
+      btnDec.addEventListener('click', () => updateMaxConcurrentJobs(-1));
+    }
+    if (btnInc) {
+      btnInc.addEventListener('click', () => updateMaxConcurrentJobs(1));
+    }
+  }
+
   // App Initialization
   function initApp() {
     initNavTabs();
     initSegmentedControls();
     initBrowserControls();
     initPlaylistControls();
+    initSlotsControl();
 
     // Initial Data Fetching
+    loadSettings();
     loadBrowserPath('/media');
     loadDrives();
     pollHardwareTelemetry();
@@ -1428,3 +1487,4 @@
   }
 
 })();
+

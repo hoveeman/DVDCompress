@@ -162,6 +162,39 @@ def test_passthrough_ui_elements():
     assert "passthrough" in res_js.text
 
 
+def test_slots_stepper_ui_elements():
+    # 1. HTML Stepper in Job History
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    html = res_html.text
+    assert "slots-control-container" in html
+    assert "btn-slots-decrement" in html
+    assert "btn-slots-increment" in html
+    assert "slots-value" in html
+    assert "Concurrent Slots:" in html
+
+    # 2. CSS Stepper & Badge styles
+    res_css = client.get("/css/style.css")
+    assert res_css.status_code == 200
+    css = res_css.text
+    assert ".slots-control-group" in css
+    assert ".stepper-widget" in css
+    assert ".btn-stepper" in css
+    assert ".slots-display" in css
+    assert ".status-pill.queued" in css
+
+    # 3. JavaScript Wiring
+    res_js = client.get("/js/app.js")
+    assert res_js.status_code == 200
+    js = res_js.text
+    assert "loadSettings" in js
+    assert "updateMaxConcurrentJobs" in js
+    assert "initSlotsControl" in js
+    assert "maxConcurrentJobs" in js
+    assert "/api/settings" in js
+
+
+
 
 
 

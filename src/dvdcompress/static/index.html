@@ -604,8 +604,20 @@
                 <p class="card-subtitle">Session jobs and task statuses</p>
               </div>
             </div>
-            <button class="btn btn-secondary btn-sm" id="btn-refresh-jobs">Refresh</button>
+            <div class="job-history-header-actions" style="display: flex; align-items: center; gap: 1rem;">
+
+              <div class="slots-control-group" id="slots-control-container" title="Maximum concurrent active jobs">
+                <span class="slots-label">Concurrent Slots:</span>
+                <div class="stepper-widget">
+                  <button type="button" class="btn-stepper" id="btn-slots-decrement" aria-label="Decrease concurrent slots">-</button>
+                  <span id="slots-value" class="slots-display">5</span>
+                  <button type="button" class="btn-stepper" id="btn-slots-increment" aria-label="Increase concurrent slots">+</button>
+                </div>
+              </div>
+              <button class="btn btn-secondary btn-sm" id="btn-refresh-jobs">Refresh</button>
+            </div>
           </header>
+
 
           <div class="card-body" style="padding: 0;">
             <table class="jobs-table" id="jobs-history-table">
