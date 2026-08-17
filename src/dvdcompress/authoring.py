@@ -60,6 +60,30 @@ def generate_spumux_xml(
 """
 
 
+def build_spumux_pipeline_command(
+    input_mpg_path: str,
+    output_mpg_path: str,
+    xml_paths: List[str],
+) -> str:
+    """Build a chained single-pass shell pipeline for multiplexing multiple DVD subtitle tracks with spumux."""
+    import shlex
+    if not xml_paths:
+        raise ValueError("At least one spumux XML configuration path is required")
+
+    stages = []
+    for s_idx, xml_p in enumerate(xml_paths):
+        stages.append(f"spumux -m dvd -s {s_idx} -P {shlex.quote(xml_p)}")
+
+    # First stage takes stdin from input_mpg_path
+    stages[0] = f"{stages[0]} < {shlex.quote(input_mpg_path)}"
+
+    # Last stage directs stdout to output_mpg_path
+    stages[-1] = f"{stages[-1]} > {shlex.quote(output_mpg_path)}"
+
+    return " | ".join(stages)
+
+
+
 def build_subtitle_extraction_command(
     input_file: str,
     stream_index: int,

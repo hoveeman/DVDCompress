@@ -21,6 +21,7 @@ from dvdcompress.authoring import (
     generate_dvdauthor_xml,
     generate_tsmuxer_meta,
     generate_spumux_xml,
+    build_spumux_pipeline_command,
     get_spumux_font_path,
     format_chapter_time,
 )
@@ -56,6 +57,7 @@ __all__ = [
     "generate_dvdauthor_xml",
     "generate_tsmuxer_meta",
     "generate_spumux_xml",
+    "build_spumux_pipeline_command",
     "get_spumux_font_path",
     "format_chapter_time",
     "build_genisoimage_command",

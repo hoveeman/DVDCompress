@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import shutil
 import signal
+import time
 import uuid
 from enum import Enum
 from typing import Dict, List, Optional, Set
@@ -11,6 +12,7 @@ from typing import Dict, List, Optional, Set
 from pydantic import BaseModel, Field
 
 from dvdcompress.authoring import (
+    build_spumux_pipeline_command,
     build_subtitle_extraction_command,
     generate_dvdauthor_xml,
     generate_spumux_xml,
@@ -684,7 +686,7 @@ class JobManager:
                     self.log(job_id, f"tsMuxeR error: {err_msg}", "error")
                     raise RuntimeError(f"Authoring failed with tsMuxeR: {err_msg[-200:]}")
             else:
-                # DVD-Video Subtitle Multiplexing via spumux
+                # DVD-Video Subtitle Multiplexing via chained streaming spumux pipeline
                 is_ntsc = job.tv_standard in (TVStandard.NTSC, TVStandard.AUTO)
                 dvd_env = os.environ.copy()
                 dvd_env["VIDEO_FORMAT"] = "NTSC" if is_ntsc else "PAL"
@@ -693,6 +695,15 @@ class JobManager:
                     if t_idx < len(transcoded_files):
                         curr_mpg = transcoded_files[t_idx]
                         text_subs = [sub for sub in title_subs if not sub.get("is_bitmap", False) and os.path.exists(sub.get("path", ""))]
+                        if not text_subs:
+                            continue
+
+                        if not os.path.exists(curr_mpg):
+                            with open(curr_mpg, "wb") as mf:
+                                mf.write(b"MOCK_MPG_STREAM")
+
+                        xml_paths = []
+                        track_summaries = []
                         for s_idx, sub_info in enumerate(text_subs):
                             spu_xml = generate_spumux_xml(
                                 srt_path=sub_info["path"],
@@ -702,34 +713,85 @@ class JobManager:
                             spu_xml_path = os.path.join(work_dir, f"spumux_t{t_idx+1}_s{s_idx}.xml")
                             with open(spu_xml_path, "w", encoding="utf-8") as sf:
                                 sf.write(spu_xml)
+                            xml_paths.append(spu_xml_path)
+                            track_summaries.append(f"[{sub_info.get('lang', 'und')}]: {sub_info.get('title') or 'Subtitles'}")
 
-                            subbed_mpg = os.path.join(work_dir, f"title_{t_idx+1}_subbed_{s_idx}.mpg")
-                            self.log(job_id, f"Multiplexing DVD subtitle track {s_idx + 1} [{sub_info['lang']}]: {sub_info.get('title') or 'Subtitles'}")
+                        subbed_mpg = os.path.join(work_dir, f"title_{t_idx+1}_subbed.mpg")
+                        tracks_str = ", ".join(track_summaries)
+                        self.log(job_id, f"Multiplexing {len(text_subs)} DVD subtitle track(s) in streaming pipeline: {tracks_str}")
 
-                            if not os.path.exists(curr_mpg):
-                                with open(curr_mpg, "wb") as mf:
-                                    mf.write(b"MOCK_MPG_STREAM")
+                        pipe_cmd = build_spumux_pipeline_command(curr_mpg, subbed_mpg, xml_paths)
+                        total_mpg_bytes = os.path.getsize(curr_mpg) if os.path.exists(curr_mpg) else 1
 
-                            with open(curr_mpg, "rb") as in_f, open(subbed_mpg, "wb") as out_f:
-                                spu_proc = await asyncio.create_subprocess_exec(
-                                    "spumux", "-m", "dvd", "-s", str(s_idx), spu_xml_path,
-                                    stdin=in_f,
-                                    stdout=out_f,
-                                    stderr=asyncio.subprocess.PIPE,
-                                    env=dvd_env,
-                                )
-                                current_process = spu_proc
-                                self.active_processes[job_id] = spu_proc
-                                _, spu_err = await spu_proc.communicate()
-                                current_process = None
-                                if job_id in self.active_processes:
-                                    del self.active_processes[job_id]
+                        spu_proc = await asyncio.create_subprocess_shell(
+                            pipe_cmd,
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE,
+                            env=dvd_env,
+                        )
+                        current_process = spu_proc
+                        self.active_processes[job_id] = spu_proc
 
-                                if spu_proc.returncode == 0 and os.path.exists(subbed_mpg) and os.path.getsize(subbed_mpg) > 0:
-                                    curr_mpg = subbed_mpg
+                        buffer = b""
+                        stderr_lines = []
+                        max_written_bytes = 0
+                        start_mux_time = time.time()
+                        last_broadcast_time = 0.0
+
+                        while True:
+                            chunk = await spu_proc.stderr.read(1024)
+                            if not chunk:
+                                break
+                            buffer += chunk
+                            while b"\r" in buffer or b"\n" in buffer:
+                                if b"\r" in buffer:
+                                    line_bytes, buffer = buffer.split(b"\r", 1)
                                 else:
-                                    err_snip = spu_err.decode(errors="replace").strip()[-200:]
-                                    self.log(job_id, f"Warning: spumux failed for track {s_idx + 1}: {err_snip}", "warning")
+                                    line_bytes, buffer = buffer.split(b"\n", 1)
+                                line_str = line_bytes.decode(errors="replace").strip()
+                                if not line_str:
+                                    continue
+                                stderr_lines.append(line_str)
+                                if len(stderr_lines) > 50:
+                                    stderr_lines.pop(0)
+
+                                if "bytes of data written" in line_str:
+                                    parts = line_str.split()
+                                    for p in parts:
+                                        if p.isdigit():
+                                            w_bytes = int(p)
+                                            if w_bytes > max_written_bytes:
+                                                max_written_bytes = w_bytes
+                                            break
+
+                                    now = time.time()
+                                    if now - last_broadcast_time >= 1.0:
+                                        last_broadcast_time = now
+                                        elapsed = max(0.5, now - start_mux_time)
+                                        pct = min(99.0, (max_written_bytes / total_mpg_bytes) * 100.0)
+                                        speed_bps = max_written_bytes / elapsed
+                                        speed_mb_s = speed_bps / (1024 * 1024)
+                                        rem_bytes = max(0, total_mpg_bytes - max_written_bytes)
+                                        job.stage_percent = round(pct, 1)
+                                        job.progress_percent = round(70.0 + (pct * 0.1), 1)
+                                        rem_sec = max(0, int(rem_bytes / speed_bps)) if speed_bps > 0 else 0
+                                        m_val, s_val = divmod(rem_sec, 60)
+                                        h_val, m_val = divmod(m_val, 60)
+                                        job.eta = f"{h_val:02d}:{m_val:02d}:{s_val:02d}" if h_val > 0 else f"{m_val:02d}:{s_val:02d}"
+                                        job.speed = f"{speed_mb_s:.1f} MB/s"
+                                        await self.broadcast(job_id)
+
+                        await spu_proc.wait()
+                        current_process = None
+                        if job_id in self.active_processes:
+                            del self.active_processes[job_id]
+
+                        if spu_proc.returncode == 0 and os.path.exists(subbed_mpg) and os.path.getsize(subbed_mpg) > 0:
+                            curr_mpg = subbed_mpg
+                            self.log(job_id, f"Successfully multiplexed {len(text_subs)} subtitle track(s) for title {t_idx+1}")
+                        else:
+                            err_snip = " | ".join(stderr_lines[-3:]) if stderr_lines else f"exit code {spu_proc.returncode}"
+                            self.log(job_id, f"Warning: Subtitle pipeline failed for title {t_idx+1}: {err_snip}", "warning")
 
                         transcoded_files[t_idx] = curr_mpg
 

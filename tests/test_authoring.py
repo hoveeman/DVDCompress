@@ -170,3 +170,31 @@ def test_generate_tsmuxer_meta_hevc_uhd():
     assert 'A_AC3, "/media/uhd_remux.mkv"' in meta
 
 
+def test_build_spumux_pipeline_command():
+    from dvdcompress.authoring import build_spumux_pipeline_command
+    import pytest
+
+    # Single track pipeline
+    cmd1 = build_spumux_pipeline_command(
+        input_mpg_path="/tmp/input.mpg",
+        output_mpg_path="/tmp/output.mpg",
+        xml_paths=["/tmp/sub0.xml"],
+    )
+    assert cmd1 == "spumux -m dvd -s 0 -P /tmp/sub0.xml < /tmp/input.mpg > /tmp/output.mpg"
+
+    # Multi-track chained pipeline
+    cmd3 = build_spumux_pipeline_command(
+        input_mpg_path="/tmp/input movie.mpg",
+        output_mpg_path="/tmp/output subbed.mpg",
+        xml_paths=["/tmp/sub0.xml", "/tmp/sub1.xml", "/tmp/sub2.xml"],
+    )
+    assert "spumux -m dvd -s 0 -P /tmp/sub0.xml < '/tmp/input movie.mpg'" in cmd3
+    assert " | spumux -m dvd -s 1 -P /tmp/sub1.xml | " in cmd3
+    assert "spumux -m dvd -s 2 -P /tmp/sub2.xml > '/tmp/output subbed.mpg'" in cmd3
+
+    # Empty xmls raises ValueError
+    with pytest.raises(ValueError):
+        build_spumux_pipeline_command("/tmp/in.mpg", "/tmp/out.mpg", [])
+
+
+

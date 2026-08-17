@@ -1545,7 +1545,17 @@ async def test_e2e_dvd_and_bluray_multi_subtitle_authoring(tmp_path, monkeypatch
                     f.write("ISO_BYTES")
         return FakeProc()
 
+    async def fake_shell(cmd_str, **kwargs):
+        executed_cmds.append(["shell", cmd_str])
+        if "spumux" in cmd_str and ">" in cmd_str:
+            out_target = cmd_str.split(">")[-1].strip().strip("'\"")
+            os.makedirs(os.path.dirname(os.path.abspath(out_target)), exist_ok=True)
+            with open(out_target, "wb") as f:
+                f.write(b"MOCK_SPUMUX_BYTES")
+        return FakeProc()
+
     monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+    monkeypatch.setattr("asyncio.create_subprocess_shell", fake_shell)
 
     # 1. Blu-ray with Subtitles
     bd_job_id = manager.create_job(
@@ -1583,9 +1593,13 @@ async def test_e2e_dvd_and_bluray_multi_subtitle_authoring(tmp_path, monkeypatch
     dvd_job = manager.get_job(dvd_job_id)
     assert dvd_job.stage == JobStage.COMPLETED
 
-    # Verify spumux was executed to multiplex the subtitle streams
-    spumux_calls = [c for c in executed_cmds if c[0] == "spumux"]
-    assert len(spumux_calls) == 2  # 2 selected text subtitle tracks (eng, fre)
+    # Verify spumux chained streaming pipeline was executed to multiplex both subtitle streams in a single pass
+    spumux_pipeline_cmds = [c[1] for c in executed_cmds if c[0] == "shell" and "spumux" in c[1]]
+    assert len(spumux_pipeline_cmds) == 1
+    pipeline_cmd = spumux_pipeline_cmds[0]
+    assert "spumux -m dvd -s 0" in pipeline_cmd
+    assert "spumux -m dvd -s 1" in pipeline_cmd
+    assert " | " in pipeline_cmd
 
     # Verify dvdauthor XML contains subpicture tags for selected languages
     assert "dvdauthor.xml" in captured_xml

@@ -684,6 +684,150 @@ async def test_job_pipeline_subtitle_extraction_and_authoring(tmp_path, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_job_pipeline_dvd_chained_spumux_multiplexing(tmp_path, monkeypatch):
+    """Verify that multiple DVD text subtitles execute a single chained spumux pipeline with live progress."""
+    manager = JobManager()
+    manager.jobs.clear()
+    media_file = str(tmp_path / "movie_multi_subs.mkv")
+    with open(media_file, "w") as f:
+        f.write("dummy_video_bytes")
+
+    output_dir = str(tmp_path / "output")
+    scratch_dir = str(tmp_path / "scratch")
+    os.makedirs(output_dir, exist_ok=True)
+
+    fake_media_info = MediaInfo(
+        path=media_file,
+        filename="movie_multi_subs.mkv",
+        duration_sec=7200.0,
+        width=720,
+        height=480,
+        aspect_ratio="16:9",
+        frame_rate=29.97,
+        video_codec="mpeg2video",
+        audio_streams=[AudioStreamInfo(index=1, codec_name="ac3", channels=6)],
+        subtitle_streams=[
+            SubtitleStreamInfo(index=2, codec_name="subrip", language="eng", title="English Dialogue"),
+            SubtitleStreamInfo(index=3, codec_name="subrip", language="eng", title="English Lyrics"),
+            SubtitleStreamInfo(index=4, codec_name="subrip", language="spa", title="Spanish"),
+        ],
+        size_bytes=4000000000,
+    )
+
+    monkeypatch.setattr("dvdcompress.job_manager.probe_media_file", AsyncMock(return_value=fake_media_info))
+
+    executed_shell_cmds = []
+
+    class FakeSpuProc:
+        returncode = 0
+
+        def __init__(self):
+            class Stream:
+                def __init__(self):
+                    self.chunks = [
+                        b"INFO: 1000000 bytes of data written\rINFO: 2000000 bytes of data written\r",
+                        b"INFO: 4000000 bytes of data written\nINFO: 3 subtitles added, 0 subtitles skipped\n",
+                        b"",
+                    ]
+                    self.idx = 0
+
+                async def read(self, n):
+                    if self.idx < len(self.chunks):
+                        res = self.chunks[self.idx]
+                        self.idx += 1
+                        return res
+                    return b""
+
+            self.stderr = Stream()
+
+        async def wait(self):
+            return 0
+
+        def send_signal(self, sig):
+            pass
+
+        def kill(self):
+            pass
+
+        async def communicate(self):
+            return (b"", b"")
+
+    class FakeExecProc:
+        returncode = 0
+        async def wait(self): return 0
+        @property
+        def stderr(self):
+            class Stream:
+                async def read(self, n): return b""
+            return Stream()
+        def send_signal(self, sig): pass
+        def kill(self): pass
+        async def communicate(self): return (b"", b"")
+
+    async def fake_exec(*cmd, **kwargs):
+        if cmd[0] == "ffmpeg":
+            out_target = cmd[-1]
+            os.makedirs(os.path.dirname(os.path.abspath(out_target)), exist_ok=True)
+            with open(out_target, "wb") as f:
+                f.write(b"MOCK_STREAM_BYTES")
+        elif cmd[0] == "dvdauthor":
+            author_dir = cmd[cmd.index("-o") + 1]
+            v_ts = os.path.join(author_dir, "VIDEO_TS")
+            os.makedirs(v_ts, exist_ok=True)
+            with open(os.path.join(v_ts, "VIDEO_TS.IFO"), "wb") as f:
+                f.write(b"DVDVIDEO-VMG")
+        if "-o" in cmd:
+            o_idx = cmd.index("-o")
+            iso_target = cmd[o_idx + 1]
+            if iso_target.endswith(".iso"):
+                os.makedirs(os.path.dirname(os.path.abspath(iso_target)), exist_ok=True)
+                with open(iso_target, "w") as f:
+                    f.write("ISO_BYTES")
+        return FakeExecProc()
+
+    async def fake_shell(cmd_str, **kwargs):
+        executed_shell_cmds.append(cmd_str)
+        if ">" in cmd_str:
+            out_target = cmd_str.split(">")[-1].strip().strip("'\"")
+            os.makedirs(os.path.dirname(os.path.abspath(out_target)), exist_ok=True)
+            with open(out_target, "wb") as f:
+                f.write(b"MOCK_SUBBED_MPG_BYTES")
+        return FakeSpuProc()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+    monkeypatch.setattr("asyncio.create_subprocess_shell", fake_shell)
+
+    job_id = manager.create_job(
+        input_files=[media_file],
+        disc_type=DiscType.DVD9,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="dvd_multi_sub_test",
+        selected_subtitle_indices=[2, 3, 4],
+    )
+
+    await manager.start_job(job_id, scratch_dir=scratch_dir, output_dir=output_dir)
+    await manager.active_tasks[job_id]
+
+    job = manager.get_job(job_id)
+    assert job.stage == JobStage.COMPLETED
+
+    # Verify a single chained spumux pipeline was executed for all 3 subtitle tracks
+    spumux_pipeline_cmds = [c for c in executed_shell_cmds if "spumux" in c]
+    assert len(spumux_pipeline_cmds) == 1
+    pipe_cmd = spumux_pipeline_cmds[0]
+    assert "spumux -m dvd -s 0" in pipe_cmd
+    assert "spumux -m dvd -s 1" in pipe_cmd
+    assert "spumux -m dvd -s 2" in pipe_cmd
+    assert " | " in pipe_cmd
+    assert pipe_cmd.count(" | ") == 2
+
+    # Verify log messages reflect the streaming pipeline
+    assert any("Multiplexing 3 DVD subtitle track(s) in streaming pipeline" in l for l in job.logs)
+    assert any("Successfully multiplexed 3 subtitle track(s)" in l for l in job.logs)
+
+
+
+@pytest.mark.asyncio
 async def test_job_pipeline_passthrough_execution(tmp_path, monkeypatch):
     """Verify that UHD Blu-ray with passthrough=True bypasses ffmpeg video transcoding."""
     manager = JobManager()
