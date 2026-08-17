@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CommunityApplications>
+  <Profile>
+    DVDCompress is a modern, self-hosted, hardware-accelerated web application designed to author, compress, and burn digital video files into 100% standard-compliant physical DVD-Video (VIDEO_TS) and Blu-ray (BDMV) optical discs or master ISO images.
+  </Profile>
+  <Icon>https://raw.githubusercontent.com/hoveeman/DVDCompress/main/docs/icon.png</Icon>
+  <WebPage>https://github.com/hoveeman/DVDCompress</WebPage>
+  <Support>https://github.com/hoveeman/DVDCompress/issues</Support>
+</CommunityApplications>

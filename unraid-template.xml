@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>dvdcompress</Name>
+  <Name>DVDCompress</Name>
   <Repository>hovee/dvdcompress:latest</Repository>
   <Registry>https://hub.docker.com/r/hovee/dvdcompress</Registry>
   <Network>bridge</Network>
