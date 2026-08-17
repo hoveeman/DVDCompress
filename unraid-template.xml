@@ -30,7 +30,7 @@
   
   <Config Name="AppData Config" Target="/config" Default="/mnt/user/appdata/dvdcompress" Mode="rw" Description="Application state and configuration" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/dvdcompress</Config>
   
-  <Config Name="Scratch Temp Directory" Target="/tmp/dvdcompress" Default="/tmp/dvdcompress" Mode="rw" Description="Fast scratch space for transcoding and authoring" Type="Path" Display="advanced" Required="false" Mask="false">/tmp/dvdcompress</Config>
+  <Config Name="Scratch Temp Directory" Target="/tmp/dvdcompress" Default="/mnt/user/appdata/dvdcompress/working" Mode="rw" Description="Fast scratch space for transcoding and authoring" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/appdata/dvdcompress/working</Config>
   
   <Config Name="NVIDIA Visible Devices" Target="NVIDIA_VISIBLE_DEVICES" Default="all" Description="GPU UUID or all for hardware transcoding" Type="Variable" Display="advanced" Required="false" Mask="false">all</Config>
   

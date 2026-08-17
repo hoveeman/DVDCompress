@@ -180,6 +180,7 @@ docker run -d \
    - **Path 1 (Media):** `/mnt/user/Media` $\rightarrow$ `/media` (Read-only)
    - **Path 2 (Output):** `/mnt/user/Media/dvd_output` $\rightarrow$ `/output` (Read/Write)
    - **Path 3 (Config):** `/mnt/user/appdata/dvdcompress` $\rightarrow$ `/config`
+   - **Path 4 (Scratch Temp):** `/mnt/user/appdata/dvdcompress/working` $\rightarrow$ `/tmp/dvdcompress`
    - **Device 1:** `/dev/sr0` $\rightarrow$ `/dev/sr0`
    - **Device 2:** `/dev/sg0` $\rightarrow$ `/dev/sg0`
    - **Privileged:** `ON`
