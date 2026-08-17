@@ -1761,6 +1761,108 @@ async def test_e2e_4k_uhd_passthrough_pipeline(tmp_path, monkeypatch):
     assert f'"{media_file}"' in meta_text
 
 
+@pytest.mark.asyncio
+async def test_e2e_max_concurrent_sessions_and_queue_persistence(tmp_path):
+    scratch_dir = str(tmp_path / "scratch")
+    output_dir = str(tmp_path / "output")
+    config_dir = str(tmp_path / "config")
+    os.makedirs(scratch_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(config_dir, exist_ok=True)
+
+    manager = JobManager()
+    manager.jobs.clear()
+    manager.active_tasks.clear()
+    manager.max_concurrent_jobs = 2
+    manager.config_dir = config_dir
+
+    events = {f"job_{i}": asyncio.Event() for i in range(1, 5)}
+
+    async def mock_pipeline(job_id, s_dir, o_dir):
+        job = manager.get_job(job_id)
+        job.stage = JobStage.TRANSCODING
+        manager.save_jobs()
+        try:
+            if job.output_name in events:
+                await events[job.output_name].wait()
+            job.stage = JobStage.COMPLETED
+            job.progress_percent = 100.0
+        finally:
+            if job_id in manager.active_tasks:
+                del manager.active_tasks[job_id]
+            manager.save_jobs()
+            await manager.process_queue(s_dir, o_dir)
+
+
+    try:
+        with patch.object(manager, "_run_pipeline", side_effect=mock_pipeline):
+            # Create 4 test jobs
+            j1 = manager.create_job(["/media/1.mp4"], DiscType.DVD5, OutputMode.ISO_ONLY, "job_1")
+            j2 = manager.create_job(["/media/2.mp4"], DiscType.DVD5, OutputMode.ISO_ONLY, "job_2")
+            j3 = manager.create_job(["/media/3.mp4"], DiscType.DVD5, OutputMode.ISO_ONLY, "job_3")
+            j4 = manager.create_job(["/media/4.mp4"], DiscType.DVD5, OutputMode.ISO_ONLY, "job_4")
+
+            await manager.queue_job(j1, scratch_dir=scratch_dir, output_dir=output_dir)
+            await manager.queue_job(j2, scratch_dir=scratch_dir, output_dir=output_dir)
+            await manager.queue_job(j3, scratch_dir=scratch_dir, output_dir=output_dir)
+            await manager.queue_job(j4, scratch_dir=scratch_dir, output_dir=output_dir)
+            await asyncio.sleep(0.02)
+
+            # Slot limit is 2: j1 and j2 are transcoding; j3 and j4 are queued
+            assert manager.jobs[j1].stage == JobStage.TRANSCODING
+            assert manager.jobs[j2].stage == JobStage.TRANSCODING
+            assert manager.jobs[j3].stage == JobStage.QUEUED
+            assert manager.jobs[j4].stage == JobStage.QUEUED
+
+            # Finish job 1 -> job 3 should auto-start in FIFO order
+            events["job_1"].set()
+            await asyncio.sleep(0.05)
+
+            assert manager.jobs[j1].stage == JobStage.COMPLETED
+            assert manager.jobs[j2].stage == JobStage.TRANSCODING
+            assert manager.jobs[j3].stage == JobStage.TRANSCODING
+            assert manager.jobs[j4].stage == JobStage.QUEUED
+
+            # Test AppData restart recovery
+            manager.save_jobs(config_dir)
+            manager.jobs.clear()
+            manager.active_tasks.clear()
+            manager.load_jobs(config_dir)
+
+            # Preserved states after restart
+            assert manager.jobs[j1].stage == JobStage.COMPLETED
+            # j2 and j3 were in-flight, re-queued on boot
+            assert manager.jobs[j2].stage == JobStage.QUEUED
+            assert manager.jobs[j3].stage == JobStage.QUEUED
+            assert manager.jobs[j4].stage == JobStage.QUEUED
+
+            # Expand slots to 4 -> all start
+            await manager.set_max_concurrent_jobs(4, scratch_dir=scratch_dir, output_dir=output_dir)
+            await asyncio.sleep(0.02)
+
+            assert manager.jobs[j2].stage == JobStage.TRANSCODING
+            assert manager.jobs[j3].stage == JobStage.TRANSCODING
+            assert manager.jobs[j4].stage == JobStage.TRANSCODING
+
+            # Finish all
+            events["job_2"].set()
+            events["job_3"].set()
+            events["job_4"].set()
+            await asyncio.sleep(0.05)
+
+            assert manager.jobs[j2].stage == JobStage.COMPLETED
+            assert manager.jobs[j3].stage == JobStage.COMPLETED
+            assert manager.jobs[j4].stage == JobStage.COMPLETED
+
+    finally:
+        for ev in events.values():
+            ev.set()
+        manager.jobs.clear()
+        manager.active_tasks.clear()
+        manager.max_concurrent_jobs = 5
+
+
+
 
 
 
