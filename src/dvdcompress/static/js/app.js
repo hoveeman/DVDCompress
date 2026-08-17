@@ -132,23 +132,37 @@
     }
   }
 
+  function setDiscType(val) {
+    state.config.disc_type = val;
+    const container = document.getElementById('control-disc-type');
+    if (container) {
+      container.querySelectorAll('.segmented-option').forEach(opt => {
+        if (opt.getAttribute('data-value') === val) {
+          opt.classList.add('active');
+        } else {
+          opt.classList.remove('active');
+        }
+      });
+    }
+    const subtitleMap = {
+      dvd5: 'Target: DVD-5 (4,300 MB)',
+      dvd9: 'Target: DVD-9 (7,850 MB)',
+      bd25: 'Target: BD-25 (23,000 MB)',
+      bd50: 'Target: BD-50 (46,000 MB)',
+      bd66: 'Target: BD-66 UHD (61,500 MB)',
+      bd100: 'Target: BDXL BD-100 (92,000 MB)',
+      bd128: 'Target: BDXL BD-128 (118,000 MB)',
+    };
+    const sub = document.getElementById('gauge-subtitle');
+    if (sub) sub.textContent = subtitleMap[val] || 'Target Capacity';
+    recalculateBudget();
+  }
+
   // Segmented Controls
   function initSegmentedControls() {
     // Disc Format
     setupSegmentGroup('control-disc-type', (val) => {
-      state.config.disc_type = val;
-      const subtitleMap = {
-        dvd5: 'Target: DVD-5 (4,300 MB)',
-        dvd9: 'Target: DVD-9 (7,850 MB)',
-        bd25: 'Target: BD-25 (23,000 MB)',
-        bd50: 'Target: BD-50 (46,000 MB)',
-        bd66: 'Target: BD-66 UHD (61,500 MB)',
-        bd100: 'Target: BDXL BD-100 (92,000 MB)',
-        bd128: 'Target: BDXL BD-128 (118,000 MB)',
-      };
-      const sub = document.getElementById('gauge-subtitle');
-      if (sub) sub.textContent = subtitleMap[val] || 'Target Capacity';
-      recalculateBudget();
+      setDiscType(val);
     });
 
     // TV Standard
@@ -771,6 +785,11 @@
     const statOverhead = document.getElementById('stat-mux-overhead');
     const statUsage = document.getElementById('stat-capacity-usage');
     const warningsContainer = document.getElementById('gauge-warnings-container');
+    const recContainer = document.getElementById('gauge-recommendation-container');
+    const formatRecChip = document.getElementById('disc-format-recommendation');
+    const formatRecText = document.getElementById('disc-format-rec-text');
+    const formatRecIcon = document.getElementById('disc-format-rec-icon');
+    const btnApplyRec = document.getElementById('btn-apply-disc-rec');
     const btnStart = document.getElementById('btn-start-project');
     const btnPreview = document.getElementById('btn-preview-project');
 
@@ -785,6 +804,8 @@
       if (statOverhead) statOverhead.textContent = '0 kbps';
       if (statUsage) statUsage.textContent = '0 / 4,480 MB';
       if (warningsContainer) warningsContainer.innerHTML = '';
+      if (recContainer) recContainer.innerHTML = '';
+      if (formatRecChip) formatRecChip.style.display = 'none';
       if (btnStart) btnStart.disabled = true;
       if (btnPreview) btnPreview.disabled = true;
       return;
@@ -865,6 +886,50 @@
             warningsContainer.appendChild(warnBox);
           });
         }
+      }
+
+      // Recommendations (Single vs Dual Layer)
+      if (budget.recommendation_reason) {
+        const isOptimal = budget.recommended_disc_type === state.config.disc_type;
+        if (recContainer) {
+          recContainer.innerHTML = `
+            <div class="recommendation-box ${isOptimal ? 'optimal' : ''}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+              <div>
+                <strong>${isOptimal ? 'Optimal Media Match' : 'Media Recommendation'}:</strong>
+                <div>${escapeHtml(budget.recommendation_reason)}</div>
+              </div>
+            </div>
+          `;
+        }
+
+        if (formatRecChip && formatRecText) {
+          formatRecChip.style.display = 'flex';
+          formatRecChip.className = `disc-format-recommendation ${isOptimal ? 'optimal' : ''}`;
+          if (formatRecIcon) formatRecIcon.textContent = isOptimal ? '✅' : '💡';
+          formatRecText.textContent = budget.recommendation_reason;
+
+          if (btnApplyRec) {
+            if (!isOptimal && budget.recommended_disc_type) {
+              const targetShortName = (budget.recommended_disc_type || '').toUpperCase();
+              btnApplyRec.textContent = `Switch to ${targetShortName}`;
+              btnApplyRec.style.display = 'inline-block';
+              btnApplyRec.onclick = () => {
+                setDiscType(budget.recommended_disc_type);
+                showToast(`Target disc format switched to ${targetShortName}`, 'info');
+              };
+            } else {
+              btnApplyRec.style.display = 'none';
+            }
+          }
+        }
+      } else {
+        if (recContainer) recContainer.innerHTML = '';
+        if (formatRecChip) formatRecChip.style.display = 'none';
       }
 
       // Enable start project & preview buttons

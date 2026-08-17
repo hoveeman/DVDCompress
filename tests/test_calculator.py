@@ -231,3 +231,26 @@ def test_preview_output_modes_and_request_model():
     assert req.preview_mode == OutputMode.PREVIEW_VIDEO
     assert req.disc_type == DiscType.DVD5
 
+
+def test_single_vs_dual_layer_recommendations():
+    # 1. 90-minute movie (5400s) on DVD-9 -> Recommends DVD-5
+    budget_short_dvd9 = calculate_bitrate_budget(total_duration_sec=5400, disc_type=DiscType.DVD9)
+    assert budget_short_dvd9.recommended_disc_type == DiscType.DVD5
+    assert "Single-Layer (DVD-5) is recommended" in budget_short_dvd9.recommendation_reason
+
+    # 2. 90-minute movie on DVD-5 -> Confirms DVD-5 is optimal
+    budget_short_dvd5 = calculate_bitrate_budget(total_duration_sec=5400, disc_type=DiscType.DVD5)
+    assert budget_short_dvd5.recommended_disc_type == DiscType.DVD5
+    assert "Single-Layer (DVD-5) is optimal" in budget_short_dvd5.recommendation_reason
+
+    # 3. 200-minute multi-episode project (12000s) on DVD-5 -> Recommends DVD-9
+    budget_long_dvd5 = calculate_bitrate_budget(total_duration_sec=12000, disc_type=DiscType.DVD5)
+    assert budget_long_dvd5.recommended_disc_type == DiscType.DVD9
+    assert "Dual-Layer (DVD-9) is recommended" in budget_long_dvd5.recommendation_reason
+
+    # 4. 100-minute movie on BD-50 -> Recommends BD-25
+    budget_short_bd50 = calculate_bitrate_budget(total_duration_sec=6000, disc_type=DiscType.BD50)
+    assert budget_short_bd50.recommended_disc_type == DiscType.BD25
+    assert "Single-Layer (BD-25) is recommended" in budget_short_bd50.recommendation_reason
+
+

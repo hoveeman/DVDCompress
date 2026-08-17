@@ -215,6 +215,33 @@ def test_job_history_remove_and_clear_ui_elements():
     assert "btn-delete-job-row" in js
 
 
+def test_disc_recommendation_ui_elements():
+    # 1. HTML containers
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    html = res_html.text
+    assert 'id="gauge-recommendation-container"' in html
+    assert 'id="disc-format-recommendation"' in html
+    assert 'id="btn-apply-disc-rec"' in html
+
+    # 2. CSS styles
+    res_css = client.get("/css/style.css")
+    assert res_css.status_code == 200
+    css = res_css.text
+    assert ".recommendation-box" in css
+    assert ".disc-format-recommendation" in css
+    assert ".btn-apply-rec" in css
+
+    # 3. JavaScript logic
+    res_js = client.get("/js/app.js")
+    assert res_js.status_code == 200
+    js = res_js.text
+    assert "recommendation_reason" in js
+    assert "disc-format-recommendation" in js
+    assert "setDiscType" in js
+
+
+
 
 
 

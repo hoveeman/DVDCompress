@@ -86,6 +86,8 @@ class BitrateBudget(BaseModel):
     total_bitrate_kbps: int
     fits_disc: bool
     warnings: List[str] = Field(default_factory=list)
+    recommended_disc_type: Optional[DiscType] = None
+    recommendation_reason: Optional[str] = None
 
 class ProjectConfig(BaseModel):
     input_files: List[str]

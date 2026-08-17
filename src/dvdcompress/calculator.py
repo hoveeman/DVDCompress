@@ -94,6 +94,70 @@ def calculate_bitrate_budget(
     used_mb = (total_project_bits / 8) / (1000 * 1000)
     capacity_percent = min(100.0, (used_mb / target_mb) * 100.0)
 
+    # Determine optimal media recommendation (Single vs Dual Layer)
+    recommended_disc_type = None
+    recommendation_reason = None
+    mins = round(total_duration_sec / 60.0, 1)
+
+    if is_dvd:
+        if total_duration_sec <= 7200:  # <= 120 minutes (2 hours)
+            recommended_disc_type = DiscType.DVD5
+            if disc_type == DiscType.DVD9:
+                recommendation_reason = (
+                    f"Single-Layer (DVD-5) is recommended for {mins:.0f} min runtime. "
+                    "It fits on a standard 4.7 GB disc at maximum visual quality (8.0 Mbps). "
+                    "Dual-Layer (DVD-9) is not needed."
+                )
+            else:
+                recommendation_reason = (
+                    f"Single-Layer (DVD-5) is optimal for {mins:.0f} min runtime. "
+                    "Encodes at maximum allowable 8,000 kbps DVD quality."
+                )
+        else:  # > 120 minutes
+            recommended_disc_type = DiscType.DVD9
+            if disc_type == DiscType.DVD5:
+                recommendation_reason = (
+                    f"Dual-Layer (DVD-9) is recommended for {mins:.0f} min runtime. "
+                    f"DVD-5 requires compressing video down to {video_bitrate} kbps. "
+                    "Switching to an 8.5 GB DVD-9 preserves full visual quality."
+                )
+            else:
+                recommendation_reason = (
+                    f"Dual-Layer (DVD-9) is optimal for {mins:.0f} min runtime. "
+                    "Provides 8.5 GB capacity for high bitrate across long footage."
+                )
+    else:
+        if total_duration_sec <= 8100:  # <= 135 minutes (2.25 hours)
+            recommended_disc_type = DiscType.BD25
+            if disc_type in (DiscType.BD50, DiscType.BD66, DiscType.BD100, DiscType.BD128):
+                recommendation_reason = (
+                    f"Single-Layer (BD-25) is recommended for {mins:.0f} min runtime. "
+                    "Fits on a 25 GB disc at maximum 35 Mbps Blu-ray master quality. "
+                    "50 GB+ is not needed."
+                )
+            else:
+                recommendation_reason = (
+                    f"Single-Layer (BD-25) is optimal for {mins:.0f} min runtime. "
+                    "Encodes at maximum 35 Mbps Blu-ray master quality."
+                )
+        elif total_duration_sec <= 16200:  # <= 270 minutes (4.5 hours)
+            recommended_disc_type = DiscType.BD50
+            if disc_type == DiscType.BD25:
+                recommendation_reason = (
+                    f"Dual-Layer (BD-50) is recommended for {mins:.0f} min runtime. "
+                    "Provides 50 GB capacity to avoid compressing video below master quality."
+                )
+            else:
+                recommendation_reason = (
+                    f"Dual-Layer (BD-50) is optimal for {mins:.0f} min runtime. "
+                    "Provides 50 GB capacity for high bitrate across all titles."
+                )
+        else:
+            recommended_disc_type = DiscType.BD66 if disc_type == DiscType.BD66 else DiscType.BD100
+            recommendation_reason = (
+                f"Triple/Quad Layer BDXL is recommended for {mins:.0f} min extended runtime."
+            )
+
     return BitrateBudget(
         disc_type=disc_type,
         target_capacity_mb=round(target_mb, 1),
@@ -105,4 +169,6 @@ def calculate_bitrate_budget(
         total_bitrate_kbps=total_kbps,
         fits_disc=fits,
         warnings=warnings,
+        recommended_disc_type=recommended_disc_type,
+        recommendation_reason=recommendation_reason,
     )
