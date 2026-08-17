@@ -1,12 +1,12 @@
-"""Async job manager and orchestration pipeline for DVDCompress with pause/resume and sequential queuing."""
-
 import asyncio
+import json
 import os
+from pathlib import Path
 import shutil
 import signal
 import uuid
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 from pydantic import BaseModel, Field
 
@@ -18,6 +18,7 @@ from dvdcompress.authoring import (
 )
 from dvdcompress.burner import build_burn_command, parse_burn_progress_line
 from dvdcompress.calculator import calculate_bitrate_budget
+from dvdcompress.config import settings
 from dvdcompress.iso import build_genisoimage_command, build_xorriso_bd_command
 from dvdcompress.models import AspectRatio, DiscType, MenuMode, OutputMode, TVStandard
 from dvdcompress.probe import probe_media_file
@@ -40,6 +41,15 @@ class JobStage(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+ACTIVE_STAGES: Set[JobStage] = {
+    JobStage.PROBING,
+    JobStage.TRANSCODING,
+    JobStage.AUTHORING,
+    JobStage.MASTERING_ISO,
+    JobStage.BURNING,
+}
 
 
 class Job(BaseModel):
@@ -83,7 +93,58 @@ class JobManager:
             cls._instance.active_processes = {}
             cls._instance.pause_events = {}
             cls._instance.listeners = {}
+            cls._instance.max_concurrent_jobs = 5
+            cls._instance.scratch_dir = str(settings.temp_dir)
+            cls._instance.output_dir = str(settings.output_dir)
+            cls._instance.config_dir = str(settings.config_dir)
         return cls._instance
+
+    def save_jobs(self, config_dir: Optional[str] = None) -> None:
+        """Persist all jobs to jobs.json in the config directory."""
+        target_dir = Path(config_dir or self.config_dir)
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+            jobs_file = target_dir / "jobs.json"
+            data = [job.model_dump(mode="json") for job in self.jobs.values()]
+            jobs_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    def load_jobs(self, config_dir: Optional[str] = None) -> None:
+        """Load jobs from jobs.json, restoring completed/failed/cancelled states and re-queueing unfinished jobs."""
+        target_dir = Path(config_dir or self.config_dir)
+        jobs_file = target_dir / "jobs.json"
+        if not jobs_file.exists():
+            return
+        try:
+            raw_data = json.loads(jobs_file.read_text(encoding="utf-8"))
+            if isinstance(raw_data, list):
+                for item in raw_data:
+                    try:
+                        job = Job(**item)
+                        if job.stage in ACTIVE_STAGES:
+                            job.stage = JobStage.QUEUED
+                            job.progress_percent = 0.0
+                            job.stage_percent = 0.0
+                            job.logs.append("[SYSTEM] Container restarted; job re-queued for execution.")
+                        self.jobs[job.job_id] = job
+                        if job.job_id not in self.pause_events:
+                            self.pause_events[job.job_id] = asyncio.Event()
+                            if job.stage == JobStage.PAUSED and job.is_paused:
+                                self.pause_events[job.job_id].clear()
+                            else:
+                                self.pause_events[job.job_id].set()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    def get_active_jobs_count(self) -> int:
+        """Return the number of currently active jobs in running stages."""
+        return sum(
+            1 for j in self.jobs.values()
+            if j.job_id in self.active_tasks and j.stage != JobStage.PAUSED
+        )
 
     def create_job(
         self,
@@ -121,6 +182,7 @@ class JobManager:
         self.jobs[job_id] = job
         self.pause_events[job_id] = asyncio.Event()
         self.pause_events[job_id].set()
+        self.save_jobs()
         return job_id
 
     def get_job(self, job_id: str) -> Optional[Job]:
@@ -150,10 +212,64 @@ class JobManager:
             if len(job.logs) > 500:
                 job.logs.pop(0)
 
+    def _schedule_queued_jobs(
+        self,
+        scratch_dir: Optional[str] = None,
+        output_dir: Optional[str] = None,
+        prioritize_job_id: Optional[str] = None,
+    ):
+        """Schedule tasks for queued jobs up to max_concurrent_jobs without yielding."""
+        s_dir = scratch_dir or self.scratch_dir
+        o_dir = output_dir or self.output_dir
+
+        if prioritize_job_id:
+            p_job = self.get_job(prioritize_job_id)
+            if p_job and p_job.stage == JobStage.QUEUED and prioritize_job_id not in self.active_tasks:
+                if self.get_active_jobs_count() < self.max_concurrent_jobs:
+                    task = asyncio.create_task(self._run_pipeline(prioritize_job_id, s_dir, o_dir))
+                    self.active_tasks[prioritize_job_id] = task
+
+        for j_id, job in list(self.jobs.items()):
+            if self.get_active_jobs_count() >= self.max_concurrent_jobs:
+                break
+            if job.stage == JobStage.QUEUED and j_id not in self.active_tasks:
+                task = asyncio.create_task(self._run_pipeline(j_id, s_dir, o_dir))
+                self.active_tasks[j_id] = task
+        self.save_jobs()
+
+    async def queue_job(self, job_id: str, scratch_dir: Optional[str] = None, output_dir: Optional[str] = None):
+        """Enqueue a job to be executed when a concurrent slot becomes available."""
+        if scratch_dir:
+            self.scratch_dir = scratch_dir
+        if output_dir:
+            self.output_dir = output_dir
+        job = self.get_job(job_id)
+        if job and job.stage == JobStage.IDLE:
+            job.stage = JobStage.QUEUED
+        self._schedule_queued_jobs(self.scratch_dir, self.output_dir)
+        if job:
+            await self.broadcast(job_id)
+
     async def start_job(self, job_id: str, scratch_dir: str = "/tmp/dvdcompress", output_dir: str = "/output"):
-        task = asyncio.create_task(self._run_pipeline(job_id, scratch_dir, output_dir))
-        self.active_tasks[job_id] = task
-        return task
+        """Schedule or start a job, respecting max_concurrent_jobs."""
+        self.scratch_dir = scratch_dir
+        self.output_dir = output_dir
+        job = self.get_job(job_id)
+        if job and job.stage == JobStage.IDLE:
+            job.stage = JobStage.QUEUED
+        self._schedule_queued_jobs(scratch_dir, output_dir, prioritize_job_id=job_id)
+        return self.active_tasks.get(job_id)
+
+    async def process_queue(self, scratch_dir: Optional[str] = None, output_dir: Optional[str] = None):
+        """Process queued jobs up to the max_concurrent_jobs limit in FIFO order."""
+        self._schedule_queued_jobs(scratch_dir, output_dir)
+
+    async def set_max_concurrent_jobs(self, limit: int, scratch_dir: Optional[str] = None, output_dir: Optional[str] = None):
+        """Update maximum concurrent job slots and trigger queue processing."""
+        self.max_concurrent_jobs = max(1, min(20, limit))
+        self._schedule_queued_jobs(scratch_dir, output_dir)
+
+
 
     async def pause_job(self, job_id: str):
         """Pause an active job, suspending its running subprocess."""
@@ -176,6 +292,7 @@ class JobManager:
                 pass
 
         self.log(job_id, "Job paused by user.")
+        self.save_jobs()
         await self.broadcast(job_id)
 
     async def resume_job(self, job_id: str):
@@ -198,6 +315,7 @@ class JobManager:
             self.pause_events[job_id].set()
 
         self.log(job_id, "Job resumed.")
+        self.save_jobs()
         await self.broadcast(job_id)
 
     async def _auto_resume_next_job(self, exclude_job_id: Optional[str] = None):
@@ -236,6 +354,8 @@ class JobManager:
                 job.error_message = "Job cancelled by user"
                 await self.broadcast(job_id)
 
+        self.save_jobs()
+        await self.process_queue()
         await self._auto_resume_next_job(job_id)
 
     async def _run_pipeline(self, job_id: str, scratch_dir: str, output_dir: str):
@@ -738,10 +858,8 @@ class JobManager:
             job.progress_percent = 100.0
             job.stage_percent = 100.0
             self.log(job_id, "Job finished successfully!")
+            self.save_jobs()
             await self.broadcast(job_id)
-
-            # Auto-resume next paused job
-            await self._auto_resume_next_job(job_id)
 
         except asyncio.CancelledError:
             if current_process:
@@ -753,8 +871,8 @@ class JobManager:
             job.stage = JobStage.CANCELLED
             job.error_message = "Job cancelled by user"
             self.log(job_id, "Job was cancelled.")
+            self.save_jobs()
             await self.broadcast(job_id)
-            await self._auto_resume_next_job(job_id)
         except Exception as e:
             if current_process:
                 try:
@@ -765,11 +883,14 @@ class JobManager:
             job.stage = JobStage.FAILED
             job.error_message = str(e)
             self.log(job_id, f"ERROR: {str(e)}")
+            self.save_jobs()
             await self.broadcast(job_id)
-            await self._auto_resume_next_job(job_id)
         finally:
             if job_id in self.active_processes:
                 del self.active_processes[job_id]
             shutil.rmtree(work_dir, ignore_errors=True)
             if job_id in self.active_tasks:
                 del self.active_tasks[job_id]
+            self.save_jobs()
+            await self.process_queue(scratch_dir, output_dir)
+            await self._auto_resume_next_job(job_id)
