@@ -529,4 +529,31 @@ def test_api_jobs_with_passthrough_toggle(tmp_path, monkeypatch):
     assert job.passthrough is True
 
 
+def test_api_settings_get_and_post():
+    res = client.get("/api/settings")
+    assert res.status_code == 200
+    data = res.json()
+    assert "max_concurrent_jobs" in data
+    assert data["max_concurrent_jobs"] >= 1
+
+    # Update settings
+    res = client.post("/api/settings", json={"max_concurrent_jobs": 7})
+    assert res.status_code == 200
+    assert res.json()["settings"]["max_concurrent_jobs"] == 7
+
+    # Verify update persisted
+    res2 = client.get("/api/settings")
+    assert res2.status_code == 200
+    assert res2.json()["max_concurrent_jobs"] == 7
+
+    # Validation error for invalid range
+    res_err = client.post("/api/settings", json={"max_concurrent_jobs": 0})
+    assert res_err.status_code == 422 or res_err.status_code == 400
+
+    # Reset back to 5
+    client.post("/api/settings", json={"max_concurrent_jobs": 5})
+
+
+
+
 

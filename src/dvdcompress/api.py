@@ -17,6 +17,7 @@ from dvdcompress.burner import (
     scan_optical_drives,
 )
 from dvdcompress.calculator import calculate_bitrate_budget
+from dvdcompress.config import AppSettings, load_app_settings, save_app_settings, settings
 from dvdcompress.job_manager import Job, JobManager, JobStage
 from dvdcompress.models import (
     AspectRatio,
@@ -32,6 +33,20 @@ from dvdcompress.system_info import get_hardware_telemetry
 
 app = FastAPI(title="DVDCompress API", version="1.0.0")
 job_manager = JobManager()
+
+# Load persisted settings and jobs on startup
+app_settings = load_app_settings(settings.config_dir)
+job_manager.max_concurrent_jobs = app_settings.max_concurrent_jobs
+job_manager.load_jobs(str(settings.config_dir))
+
+
+@app.on_event("startup")
+async def startup_event():
+    current_settings = load_app_settings(settings.config_dir)
+    job_manager.max_concurrent_jobs = current_settings.max_concurrent_jobs
+    job_manager.load_jobs(str(settings.config_dir))
+    await job_manager.process_queue(get_scratch_dir(), get_output_dir())
+
 
 def get_media_dir() -> str:
     return os.environ.get("DVDCOMPRESS_MEDIA_DIR", os.environ.get("MEDIA_DIR", "/media"))
@@ -287,6 +302,18 @@ def get_system():
     return get_hardware_telemetry()
 
 
+@app.get("/api/settings", response_model=AppSettings)
+def get_settings():
+    return load_app_settings(settings.config_dir)
+
+
+@app.post("/api/settings")
+async def update_settings(req: AppSettings):
+    save_app_settings(req, settings.config_dir)
+    await job_manager.set_max_concurrent_jobs(req.max_concurrent_jobs, get_scratch_dir(), get_output_dir())
+    return {"status": "updated", "settings": req.model_dump()}
+
+
 @app.post("/api/jobs")
 async def create_job(req: CreateJobRequest):
     for f in req.input_files:
@@ -312,7 +339,10 @@ async def create_job(req: CreateJobRequest):
     await job_manager.start_job(
         job_id, scratch_dir=get_scratch_dir(), output_dir=get_output_dir()
     )
-    return {"job_id": job_id, "status": "started"}
+    job = job_manager.get_job(job_id)
+    status_val = "queued" if (job and job.stage == JobStage.QUEUED) else "started"
+    return {"job_id": job_id, "status": status_val}
+
 
 
 @app.post("/api/burn-iso")

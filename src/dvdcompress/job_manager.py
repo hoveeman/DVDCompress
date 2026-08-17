@@ -113,10 +113,10 @@ class JobManager:
     def load_jobs(self, config_dir: Optional[str] = None) -> None:
         """Load jobs from jobs.json, restoring completed/failed/cancelled states and re-queueing unfinished jobs."""
         target_dir = Path(config_dir or self.config_dir)
-        jobs_file = target_dir / "jobs.json"
-        if not jobs_file.exists():
-            return
         try:
+            jobs_file = target_dir / "jobs.json"
+            if not jobs_file.exists():
+                return
             raw_data = json.loads(jobs_file.read_text(encoding="utf-8"))
             if isinstance(raw_data, list):
                 for item in raw_data:
@@ -138,6 +138,7 @@ class JobManager:
                         pass
         except Exception:
             pass
+
 
     def get_active_jobs_count(self) -> int:
         """Return the number of currently active jobs in running stages."""

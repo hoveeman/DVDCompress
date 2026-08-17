@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from pydantic import BaseModel, Field
 
+from typing import Optional
+
 class Settings(BaseModel):
     media_dir: Path = Field(
         default_factory=lambda: Path(
@@ -42,25 +44,44 @@ class AppSettings(BaseModel):
     max_concurrent_jobs: int = Field(default=5, ge=1, le=20)
 
 
+_current_settings: Optional[AppSettings] = None
+
+
+
 def load_app_settings(config_dir: Path) -> AppSettings:
+    global _current_settings
     config_dir = Path(config_dir)
-    config_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        config_dir.mkdir(parents=True, exist_ok=True)
+    except (OSError, PermissionError):
+        pass
     settings_file = config_dir / "settings.json"
-    if settings_file.exists():
-        try:
+    try:
+        if settings_file.exists():
             import json
             data = json.loads(settings_file.read_text(encoding="utf-8"))
-            return AppSettings(**data)
-        except Exception:
-            pass
+            _current_settings = AppSettings(**data)
+            return _current_settings
+    except Exception:
+        pass
+    if _current_settings is not None:
+        return _current_settings
     s = AppSettings()
     save_app_settings(s, config_dir)
+    _current_settings = s
     return s
 
 
 def save_app_settings(app_settings: AppSettings, config_dir: Path) -> None:
+    global _current_settings
+    _current_settings = app_settings
     config_dir = Path(config_dir)
-    config_dir.mkdir(parents=True, exist_ok=True)
-    settings_file = config_dir / "settings.json"
-    settings_file.write_text(app_settings.model_dump_json(indent=2), encoding="utf-8")
+    try:
+        config_dir.mkdir(parents=True, exist_ok=True)
+        settings_file = config_dir / "settings.json"
+        settings_file.write_text(app_settings.model_dump_json(indent=2), encoding="utf-8")
+    except (OSError, PermissionError):
+        pass
+
+
 
