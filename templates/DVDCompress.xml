@@ -6,7 +6,7 @@
   <Network>bridge</Network>
   <MyIP/>
   <Shell>bash</Shell>
-  <Privileged>true</Privileged>
+  <Privileged>false</Privileged>
   <Support>https://github.com/hoveeman/DVDCompress/issues</Support>
   <Project>https://github.com/hoveeman/DVDCompress</Project>
   <Overview>Hardware-accelerated web application for authoring and burning standard-compliant DVD-Video (VIDEO_TS) and Blu-ray (BDMV) discs and ISO images with NVIDIA GPU acceleration (NVENC/NVDEC) and optical drive pass-through.</Overview>
