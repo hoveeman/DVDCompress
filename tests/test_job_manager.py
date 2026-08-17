@@ -1018,4 +1018,100 @@ async def test_job_pipeline_passthrough_execution(tmp_path, monkeypatch):
     assert any(c[0] == "tsMuxeR" for c in executed_cmds)
 
 
+@pytest.mark.asyncio
+async def test_job_pipeline_dvd_iso_creation_with_udf_fallback_on_genisoimage_error(tmp_path, monkeypatch):
+    """Verify that if genisoimage encounters the 'Implementation botch. Video pad is -32' error,
+    the pipeline automatically recovers by mastering the ISO via UDF fallback."""
+    manager = JobManager()
+    manager.jobs.clear()
+    media_file = str(tmp_path / "ep1.mkv")
+    with open(media_file, "w") as f:
+        f.write("content")
+
+    output_dir = str(tmp_path / "output")
+    scratch_dir = str(tmp_path / "scratch")
+    os.makedirs(output_dir, exist_ok=True)
+
+    fake_probe_info = MediaInfo(
+        path=media_file,
+        filename="ep1.mkv",
+        duration_sec=1200.0,
+        width=1920,
+        height=1080,
+        aspect_ratio="16:9",
+        frame_rate=23.976,
+        video_codec="h264",
+        audio_streams=[AudioStreamInfo(index=1, codec_name="ac3", channels=2)],
+        subtitle_streams=[],
+        size_bytes=1000000,
+    )
+
+    monkeypatch.setattr("dvdcompress.job_manager.probe_media_file", AsyncMock(return_value=fake_probe_info))
+
+    executed_cmds = []
+
+    class FakeProc:
+        def __init__(self, cmd):
+            self.cmd = cmd
+            self.returncode = 0
+        async def wait(self): return self.returncode
+        @property
+        def stderr(self):
+            class Stream:
+                async def read(self, n): return b""
+            return Stream()
+        def send_signal(self, sig): pass
+        def kill(self): pass
+        async def communicate(self):
+            if "-dvd-video" in self.cmd and "genisoimage" in self.cmd[0]:
+                self.returncode = 1
+                return (
+                    b"",
+                    b"genisoimage: Implementation botch. Video pad for file VIDEO_TS.BUP is -32\ngenisoimage: Either the *.IFO file is bad or you found a genisoimage bug.",
+                )
+            if "-o" in self.cmd:
+                o_idx = self.cmd.index("-o")
+                target_file = self.cmd[o_idx + 1]
+                if target_file.endswith(".iso"):
+                    os.makedirs(os.path.dirname(os.path.abspath(target_file)), exist_ok=True)
+                    with open(target_file, "wb") as f:
+                        f.write(b"ISO_CONTENT_DATA")
+            return (b"", b"")
+
+    async def fake_exec(*cmd, **kwargs):
+        executed_cmds.append(list(cmd))
+        if cmd[0] == "ffmpeg":
+            out_target = cmd[-1]
+            os.makedirs(os.path.dirname(os.path.abspath(out_target)), exist_ok=True)
+            with open(out_target, "wb") as f:
+                f.write(b"MOCK_STREAM_BYTES")
+        elif cmd[0] == "dvdauthor":
+            author_dir = cmd[cmd.index("-o") + 1]
+            v_ts = os.path.join(author_dir, "VIDEO_TS")
+            os.makedirs(v_ts, exist_ok=True)
+            with open(os.path.join(v_ts, "VIDEO_TS.IFO"), "wb") as f:
+                f.write(b"DVDVIDEO-VMG")
+        return FakeProc(cmd)
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+
+    job_id = manager.create_job(
+        input_files=[media_file],
+        disc_type=DiscType.DVD9,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="receiver_multi_title",
+    )
+
+    await manager.start_job(job_id, scratch_dir=scratch_dir, output_dir=output_dir)
+    await manager.active_tasks[job_id]
+
+    job = manager.get_job(job_id)
+    assert job.stage == JobStage.COMPLETED
+
+    # Check that fallback notice was logged and ISO completed successfully
+    assert any("UDF fallback" in log for log in job.logs)
+    assert os.path.exists(job.output_iso_path)
+
+
+
 

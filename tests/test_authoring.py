@@ -59,6 +59,8 @@ def test_generate_tsmuxer_meta():
 
 
 def test_iso_commands():
+    from dvdcompress.iso import build_dvd_iso_command, build_xorriso_dvd_command
+
     iso_cmd = build_genisoimage_command("/tmp/author", "/output/movie.iso", "MY_MOVIE")
     assert "-dvd-video" in iso_cmd
     assert "-udf" in iso_cmd
@@ -66,6 +68,17 @@ def test_iso_commands():
     assert "-o" in iso_cmd
     assert "/output/movie.iso" in iso_cmd
     assert "/tmp/author" in iso_cmd
+
+    xorriso_dvd = build_xorriso_dvd_command("/tmp/author", "/output/movie.iso", "MY_MOVIE")
+    assert "xorriso" in xorriso_dvd
+    assert "-dvd-video" in xorriso_dvd
+    assert "-udf" in xorriso_dvd
+    assert "MY_MOVIE" in xorriso_dvd
+    assert "/tmp/author" in xorriso_dvd
+
+    dvd_auto = build_dvd_iso_command("/tmp/author", "/output/movie.iso", "MY_MOVIE")
+    assert "-dvd-video" in dvd_auto
+    assert "-udf" in dvd_auto
 
     bd_cmd = build_xorriso_bd_command("/tmp/bd_author", "/output/bd.iso", "MY_BLURAY")
     assert "-udf" in bd_cmd

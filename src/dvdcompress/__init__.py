@@ -27,6 +27,8 @@ from dvdcompress.authoring import (
 )
 from dvdcompress.iso import (
     build_genisoimage_command,
+    build_xorriso_dvd_command,
+    build_dvd_iso_command,
     build_xorriso_bd_command,
 )
 from dvdcompress.burner import (
@@ -61,6 +63,8 @@ __all__ = [
     "get_spumux_font_path",
     "format_chapter_time",
     "build_genisoimage_command",
+    "build_xorriso_dvd_command",
+    "build_dvd_iso_command",
     "build_xorriso_bd_command",
     "OpticalDrive",
     "scan_optical_drives",

@@ -21,7 +21,11 @@ from dvdcompress.authoring import (
 from dvdcompress.burner import build_burn_command, parse_burn_progress_line
 from dvdcompress.calculator import calculate_bitrate_budget
 from dvdcompress.config import settings
-from dvdcompress.iso import build_genisoimage_command, build_xorriso_bd_command
+from dvdcompress.iso import (
+    build_dvd_iso_command,
+    build_genisoimage_command,
+    build_xorriso_bd_command,
+)
 from dvdcompress.models import AspectRatio, DiscType, MenuMode, OutputMode, TVStandard
 from dvdcompress.probe import probe_media_file
 from dvdcompress.transcoder import (
@@ -897,8 +901,9 @@ class JobManager:
             if is_bluray:
                 iso_cmd = build_xorriso_bd_command(author_dir, iso_path, clean_iso_name)
             else:
-                iso_cmd = build_genisoimage_command(author_dir, iso_path, clean_iso_name)
+                iso_cmd = build_dvd_iso_command(author_dir, iso_path, clean_iso_name)
 
+            self.log(job_id, f"Building ISO image ({iso_cmd[0]})...")
             proc = await asyncio.create_subprocess_exec(
                 *iso_cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -910,10 +915,55 @@ class JobManager:
             current_process = None
             if job_id in self.active_processes:
                 del self.active_processes[job_id]
+
             if proc.returncode != 0:
                 err_msg = iso_err.decode(errors="replace").strip() or iso_out.decode(errors="replace").strip()
-                self.log(job_id, f"ISO creation error: {err_msg}", "error")
-                raise RuntimeError(f"ISO creation failed: {err_msg[-200:]}")
+                # If genisoimage hit a padding or arithmetic bug (e.g. Video pad is -32), retry with UDF mastering fallback
+                if "Implementation botch" in err_msg or "Video pad for file" in err_msg or "genisoimage" in iso_cmd[0]:
+                    self.log(job_id, f"Notice: ISO builder reported '{err_msg[-120:]}'. Attempting UDF fallback mastering...", "warning")
+                    fallback_cmd = (
+                        [
+                            "xorriso",
+                            "-as",
+                            "mkisofs",
+                            "-udf",
+                            "-V",
+                            clean_iso_name[:32],
+                            "-o",
+                            iso_path,
+                            author_dir,
+                        ]
+                        if shutil.which("xorriso")
+                        else [
+                            "genisoimage",
+                            "-udf",
+                            "-V",
+                            clean_iso_name[:32],
+                            "-o",
+                            iso_path,
+                            author_dir,
+                        ]
+                    )
+                    retry_proc = await asyncio.create_subprocess_exec(
+                        *fallback_cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    current_process = retry_proc
+                    self.active_processes[job_id] = retry_proc
+                    r_out, r_err = await retry_proc.communicate()
+                    current_process = None
+                    if job_id in self.active_processes:
+                        del self.active_processes[job_id]
+                    if retry_proc.returncode == 0 and os.path.exists(iso_path) and os.path.getsize(iso_path) > 0:
+                        self.log(job_id, "Successfully mastered DVD ISO via UDF fallback.")
+                    else:
+                        r_err_msg = r_err.decode(errors="replace").strip() or r_out.decode(errors="replace").strip()
+                        self.log(job_id, f"ISO creation fallback error: {r_err_msg}", "error")
+                        raise RuntimeError(f"ISO creation failed: {r_err_msg[-200:]}")
+                else:
+                    self.log(job_id, f"ISO creation error: {err_msg}", "error")
+                    raise RuntimeError(f"ISO creation failed: {err_msg[-200:]}")
 
             # If PREVIEW_ISO, pipeline completes here
             if job.output_mode == OutputMode.PREVIEW_ISO:

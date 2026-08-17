@@ -1,6 +1,28 @@
 """ISO mastering command builders for DVD-Video and Blu-ray."""
 
+import shutil
 from typing import List
+
+
+def build_xorriso_dvd_command(
+    author_dir: str,
+    output_iso_path: str,
+    volume_label: str = "DVD_DISC",
+) -> List[str]:
+    """Build xorriso command for mastering standard DVD-Video UDF bridge ISOs."""
+    clean_label = "".join([c if c.isalnum() else "_" for c in volume_label.upper()])[:32]
+    return [
+        "xorriso",
+        "-as",
+        "mkisofs",
+        "-dvd-video",
+        "-udf",
+        "-V",
+        clean_label,
+        "-o",
+        output_iso_path,
+        author_dir,
+    ]
 
 
 def build_genisoimage_command(
@@ -9,7 +31,6 @@ def build_genisoimage_command(
     volume_label: str = "DVD_DISC",
 ) -> List[str]:
     """Build genisoimage command for mastering DVD-Video UDF bridge ISOs."""
-    # Sanitized volume label (max 32 uppercase alphanumeric chars)
     clean_label = "".join([c if c.isalnum() else "_" for c in volume_label.upper()])[:32]
     return [
         "genisoimage",
@@ -21,6 +42,17 @@ def build_genisoimage_command(
         output_iso_path,
         author_dir,
     ]
+
+
+def build_dvd_iso_command(
+    author_dir: str,
+    output_iso_path: str,
+    volume_label: str = "DVD_DISC",
+) -> List[str]:
+    """Build best available command for mastering DVD-Video ISOs (preferring xorriso)."""
+    if shutil.which("xorriso"):
+        return build_xorriso_dvd_command(author_dir, output_iso_path, volume_label)
+    return build_genisoimage_command(author_dir, output_iso_path, volume_label)
 
 
 def build_xorriso_bd_command(
