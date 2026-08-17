@@ -173,7 +173,7 @@ docker run -d \
 
 ### Unraid OS
 1. Install the **NVIDIA Driver** plugin from Community Applications (if using an NVIDIA GPU).
-2. Add a new Docker Container in Unraid (or use the included `unraid-template.xml`):
+2. Add a new Docker Container in Unraid (or use the included `templates/DVDCompress.xml`):
    - **Repository:** `hovee/dvdcompress:latest`
    - **WebUI:** `http://[IP]:[PORT:8080]`
    - **Port:** `8080` $\rightarrow$ `8080`

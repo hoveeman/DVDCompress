@@ -12,7 +12,7 @@
   <Overview>Hardware-accelerated web application for authoring and burning standard-compliant DVD-Video (VIDEO_TS) and Blu-ray (BDMV) discs and ISO images with NVIDIA GPU acceleration (NVENC/NVDEC) and optical drive pass-through.</Overview>
   <Category>MediaApp:Video MediaApp:Other Productivity: Tools:</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/hoveeman/DVDCompress/main/unraid-template.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/hoveeman/DVDCompress/main/templates/DVDCompress.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/hoveeman/DVDCompress/main/docs/icon.png</Icon>
   <ExtraParams>--gpus all --device /dev/sr0:/dev/sr0 --device /dev/sg0:/dev/sg0</ExtraParams>
   <PostArgs/>
