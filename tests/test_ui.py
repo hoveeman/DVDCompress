@@ -201,6 +201,21 @@ def test_slots_stepper_ui_elements():
     assert "/api/settings" in js
 
 
+def test_job_history_remove_and_clear_ui_elements():
+    # 1. HTML Clear History button
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    assert 'id="btn-clear-history"' in res_html.text
+
+    # 2. JavaScript wiring for row remove and history clear
+    res_js = client.get("/js/app.js")
+    assert res_js.status_code == 200
+    js = res_js.text
+    assert "btn-clear-history" in js
+    assert "btn-delete-job-row" in js
+
+
+
 
 
 

@@ -554,6 +554,75 @@ def test_api_settings_get_and_post():
     client.post("/api/settings", json={"max_concurrent_jobs": 5})
 
 
+def test_api_delete_job_success():
+    # Create a job and set it to completed
+    job_id = job_manager.create_job(
+        input_files=["/media/dummy.mkv"],
+        disc_type=DiscType.DVD5,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="test_delete",
+    )
+    job = job_manager.get_job(job_id)
+    job.stage = JobStage.COMPLETED
+
+    res = client.delete(f"/api/jobs/{job_id}")
+    assert res.status_code == 200
+    assert res.json()["status"] == "deleted"
+    assert job_manager.get_job(job_id) is None
+
+
+def test_api_delete_job_not_found():
+    res = client.delete("/api/jobs/nonexistent_id")
+    assert res.status_code == 404
+
+
+def test_api_delete_job_active_error():
+    job_id = job_manager.create_job(
+        input_files=["/media/dummy.mkv"],
+        disc_type=DiscType.DVD5,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="test_delete_active",
+    )
+    job = job_manager.get_job(job_id)
+    job.stage = JobStage.TRANSCODING
+    job_manager.active_tasks[job_id] = "mock_task"
+
+    try:
+        res = client.delete(f"/api/jobs/{job_id}")
+        assert res.status_code == 400
+        assert "Cannot delete an active running job" in res.json()["detail"]
+    finally:
+        del job_manager.active_tasks[job_id]
+        job_manager.delete_job(job_id)
+
+
+def test_api_clear_jobs_history():
+    job_id1 = job_manager.create_job(
+        input_files=["/media/dummy1.mkv"],
+        disc_type=DiscType.DVD5,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="test_clear_1",
+    )
+    job_id2 = job_manager.create_job(
+        input_files=["/media/dummy2.mkv"],
+        disc_type=DiscType.DVD5,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="test_clear_2",
+    )
+    job1 = job_manager.get_job(job_id1)
+    job2 = job_manager.get_job(job_id2)
+    job1.stage = JobStage.COMPLETED
+    job2.stage = JobStage.FAILED
+
+    res = client.delete("/api/jobs")
+    assert res.status_code == 200
+    assert res.json()["status"] == "cleared"
+    assert res.json()["count"] >= 2
+    assert job_manager.get_job(job_id1) is None
+    assert job_manager.get_job(job_id2) is None
+
+
+
 
 
 

@@ -321,10 +321,32 @@
       });
     }
 
-    // Refresh Jobs Button
+    // Refresh & Clear Jobs Buttons
     const btnRefreshJobs = document.getElementById('btn-refresh-jobs');
     if (btnRefreshJobs) {
       btnRefreshJobs.addEventListener('click', loadJobHistory);
+    }
+
+    const btnClearHistory = document.getElementById('btn-clear-history');
+    if (btnClearHistory) {
+      btnClearHistory.addEventListener('click', async () => {
+        const finishedJobs = (state.jobs || []).filter(j => ['completed', 'failed', 'cancelled'].includes(j.stage));
+        if (finishedJobs.length === 0) {
+          showToast('No past jobs to clear in history', 'info');
+          return;
+        }
+        if (confirm(`Clear all ${finishedJobs.length} past job(s) from history?`)) {
+          try {
+            const res = await fetch('/api/jobs', { method: 'DELETE' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            showToast(`Cleared ${data.count || finishedJobs.length} job(s) from history`, 'info');
+            loadJobHistory();
+          } catch (err) {
+            showToast(`Failed to clear history: ${err.message}`, 'error');
+          }
+        }
+      });
     }
   }
 
@@ -1427,6 +1449,7 @@
             <button class="btn btn-secondary btn-sm btn-monitor-job">Monitor</button>
             ${isActive ? `<button class="btn btn-secondary btn-sm btn-pause-job-row" style="margin-left: 4px;">${isPaused ? 'Resume' : 'Pause'}</button>` : ''}
             ${isActive ? '<button class="btn btn-danger btn-sm btn-cancel-job-row" style="margin-left: 4px;">Cancel</button>' : ''}
+            ${!isActive ? '<button class="btn btn-danger btn-sm btn-delete-job-row" style="margin-left: 4px;" title="Remove this job from history">Remove</button>' : ''}
           </td>
         `;
 
@@ -1445,6 +1468,20 @@
           if (confirm(`Cancel job ${j.job_id}?`)) {
             await fetch(`/api/jobs/${j.job_id}/cancel`, { method: 'POST' });
             loadJobHistory();
+          }
+        });
+
+        tr.querySelector('.btn-delete-job-row')?.addEventListener('click', async () => {
+          try {
+            const res = await fetch(`/api/jobs/${j.job_id}`, { method: 'DELETE' });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.detail || `HTTP ${res.status}`);
+            }
+            showToast(`Job ${j.job_id} removed from history`, 'info');
+            loadJobHistory();
+          } catch (err) {
+            showToast(`Failed to remove job: ${err.message}`, 'error');
           }
         });
 

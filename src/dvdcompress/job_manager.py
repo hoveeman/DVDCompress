@@ -191,6 +191,41 @@ class JobManager:
     def get_job(self, job_id: str) -> Optional[Job]:
         return self.jobs.get(job_id)
 
+    def delete_job(self, job_id: str) -> bool:
+        """Delete a single job from memory and persisted history."""
+        if job_id not in self.jobs:
+            return False
+        del self.jobs[job_id]
+        if job_id in self.pause_events:
+            del self.pause_events[job_id]
+        if job_id in self.listeners:
+            del self.listeners[job_id]
+        if job_id in self.active_processes:
+            del self.active_processes[job_id]
+        if job_id in self.active_tasks:
+            del self.active_tasks[job_id]
+
+        try:
+            work_dir = os.path.join(self.scratch_dir, job_id)
+            if os.path.exists(work_dir):
+                shutil.rmtree(work_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+        self.save_jobs()
+        return True
+
+    def clear_history(self) -> int:
+        """Remove all non-active (completed, failed, cancelled) jobs from history."""
+        finished_stages = {JobStage.COMPLETED, JobStage.FAILED, JobStage.CANCELLED}
+        to_delete = [
+            j_id for j_id, j in self.jobs.items()
+            if j.stage in finished_stages and j_id not in self.active_tasks
+        ]
+        for j_id in to_delete:
+            self.delete_job(j_id)
+        return len(to_delete)
+
     async def broadcast(self, job_id: str):
         job = self.get_job(job_id)
         if not job or job_id not in self.listeners:

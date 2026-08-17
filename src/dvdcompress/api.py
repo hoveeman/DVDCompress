@@ -18,7 +18,7 @@ from dvdcompress.burner import (
 )
 from dvdcompress.calculator import calculate_bitrate_budget
 from dvdcompress.config import AppSettings, load_app_settings, save_app_settings, settings
-from dvdcompress.job_manager import Job, JobManager, JobStage
+from dvdcompress.job_manager import ACTIVE_STAGES, Job, JobManager, JobStage
 from dvdcompress.models import (
     AspectRatio,
     BitrateBudget,
@@ -454,6 +454,35 @@ async def resume_job_endpoint(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
     await job_manager.resume_job(job_id)
     return {"status": "resumed"}
+
+
+@app.delete("/api/jobs/{job_id}")
+def delete_job_endpoint(job_id: str):
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.stage in ACTIVE_STAGES and job_id in job_manager.active_tasks:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete an active running job. Please cancel it first.",
+        )
+    deleted = job_manager.delete_job(job_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"status": "deleted", "job_id": job_id}
+
+
+@app.delete("/api/jobs")
+def clear_jobs_endpoint():
+    count = job_manager.clear_history()
+    return {"status": "cleared", "count": count}
+
+
+@app.post("/api/jobs/clear-history")
+def clear_jobs_post_endpoint():
+    count = job_manager.clear_history()
+    return {"status": "cleared", "count": count}
+
 
 
 @app.websocket("/ws/jobs/{job_id}")
