@@ -71,7 +71,7 @@ def test_iso_commands():
 
     xorriso_dvd = build_xorriso_dvd_command("/tmp/author", "/output/movie.iso", "MY_MOVIE")
     assert "xorriso" in xorriso_dvd
-    assert "-dvd-video" in xorriso_dvd
+    assert "-dvd-video" not in xorriso_dvd
     assert "-udf" in xorriso_dvd
     assert "MY_MOVIE" in xorriso_dvd
     assert "/tmp/author" in xorriso_dvd

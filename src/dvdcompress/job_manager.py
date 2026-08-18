@@ -919,7 +919,7 @@ class JobManager:
             if proc.returncode != 0:
                 err_msg = iso_err.decode(errors="replace").strip() or iso_out.decode(errors="replace").strip()
                 # If genisoimage hit a padding or arithmetic bug (e.g. Video pad is -32), retry with UDF mastering fallback
-                if "Implementation botch" in err_msg or "Video pad for file" in err_msg or "genisoimage" in iso_cmd[0]:
+                if "Implementation botch" in err_msg or "Video pad" in err_msg or "genisoimage bug" in err_msg:
                     self.log(job_id, f"Notice: ISO builder reported '{err_msg[-120:]}'. Attempting UDF fallback mastering...", "warning")
                     fallback_cmd = (
                         [

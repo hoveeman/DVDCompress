@@ -9,13 +9,12 @@ def build_xorriso_dvd_command(
     output_iso_path: str,
     volume_label: str = "DVD_DISC",
 ) -> List[str]:
-    """Build xorriso command for mastering standard DVD-Video UDF bridge ISOs."""
+    """Build xorriso UDF command for mastering DVD ISOs (xorriso does not support -dvd-video)."""
     clean_label = "".join([c if c.isalnum() else "_" for c in volume_label.upper()])[:32]
     return [
         "xorriso",
         "-as",
         "mkisofs",
-        "-dvd-video",
         "-udf",
         "-V",
         clean_label,
@@ -32,8 +31,9 @@ def build_genisoimage_command(
 ) -> List[str]:
     """Build genisoimage command for mastering DVD-Video UDF bridge ISOs."""
     clean_label = "".join([c if c.isalnum() else "_" for c in volume_label.upper()])[:32]
+    binary = "genisoimage" if (shutil.which("genisoimage") or not shutil.which("mkisofs")) else "mkisofs"
     return [
-        "genisoimage",
+        binary,
         "-dvd-video",
         "-udf",
         "-V",
@@ -49,9 +49,7 @@ def build_dvd_iso_command(
     output_iso_path: str,
     volume_label: str = "DVD_DISC",
 ) -> List[str]:
-    """Build best available command for mastering DVD-Video ISOs (preferring xorriso)."""
-    if shutil.which("xorriso"):
-        return build_xorriso_dvd_command(author_dir, output_iso_path, volume_label)
+    """Build command for mastering DVD-Video ISOs using genisoimage/mkisofs."""
     return build_genisoimage_command(author_dir, output_iso_path, volume_label)
 
 
