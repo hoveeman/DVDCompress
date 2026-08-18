@@ -33,7 +33,7 @@ from dvdcompress.models import (
 from dvdcompress.probe import analyze_video_complexity, probe_media_file
 from dvdcompress.system_info import get_hardware_telemetry
 
-app = FastAPI(title="DVDCompress API", version="1.0.3")
+app = FastAPI(title="DVDCompress API", version="1.0.4")
 job_manager = JobManager()
 
 # Load persisted settings and jobs on startup

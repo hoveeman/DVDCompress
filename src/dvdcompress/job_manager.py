@@ -22,6 +22,7 @@ from dvdcompress.burner import build_burn_command, parse_burn_progress_line
 from dvdcompress.calculator import calculate_bitrate_budget
 from dvdcompress.config import settings
 from dvdcompress.iso import (
+    build_dvd_fallback_iso_command,
     build_dvd_iso_command,
     build_genisoimage_command,
     build_xorriso_bd_command,
@@ -921,29 +922,7 @@ class JobManager:
                 # If genisoimage hit a padding or arithmetic bug (e.g. Video pad is -32), retry with UDF mastering fallback
                 if "Implementation botch" in err_msg or "Video pad" in err_msg or "genisoimage bug" in err_msg:
                     self.log(job_id, f"Notice: ISO builder reported '{err_msg[-120:]}'. Attempting UDF fallback mastering...", "warning")
-                    fallback_cmd = (
-                        [
-                            "xorriso",
-                            "-as",
-                            "mkisofs",
-                            "-udf",
-                            "-V",
-                            clean_iso_name[:32],
-                            "-o",
-                            iso_path,
-                            author_dir,
-                        ]
-                        if shutil.which("xorriso")
-                        else [
-                            "genisoimage",
-                            "-udf",
-                            "-V",
-                            clean_iso_name[:32],
-                            "-o",
-                            iso_path,
-                            author_dir,
-                        ]
-                    )
+                    fallback_cmd = build_dvd_fallback_iso_command(author_dir, iso_path, clean_iso_name)
                     retry_proc = await asyncio.create_subprocess_exec(
                         *fallback_cmd,
                         stdout=asyncio.subprocess.PIPE,

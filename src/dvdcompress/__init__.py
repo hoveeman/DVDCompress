@@ -29,6 +29,7 @@ from dvdcompress.iso import (
     build_genisoimage_command,
     build_xorriso_dvd_command,
     build_dvd_iso_command,
+    build_dvd_fallback_iso_command,
     build_xorriso_bd_command,
 )
 from dvdcompress.burner import (
@@ -65,6 +66,7 @@ __all__ = [
     "build_genisoimage_command",
     "build_xorriso_dvd_command",
     "build_dvd_iso_command",
+    "build_dvd_fallback_iso_command",
     "build_xorriso_bd_command",
     "OpticalDrive",
     "scan_optical_drives",
@@ -78,4 +80,4 @@ __all__ = [
     "__version__",
 ]
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"

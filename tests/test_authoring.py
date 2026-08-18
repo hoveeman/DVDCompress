@@ -59,7 +59,13 @@ def test_generate_tsmuxer_meta():
 
 
 def test_iso_commands():
-    from dvdcompress.iso import build_dvd_iso_command, build_xorriso_dvd_command
+    from dvdcompress.iso import (
+        build_dvd_fallback_iso_command,
+        build_dvd_iso_command,
+        build_genisoimage_command,
+        build_xorriso_bd_command,
+        build_xorriso_dvd_command,
+    )
 
     iso_cmd = build_genisoimage_command("/tmp/author", "/output/movie.iso", "MY_MOVIE")
     assert "-dvd-video" in iso_cmd
@@ -72,7 +78,7 @@ def test_iso_commands():
     xorriso_dvd = build_xorriso_dvd_command("/tmp/author", "/output/movie.iso", "MY_MOVIE")
     assert "xorriso" in xorriso_dvd
     assert "-dvd-video" not in xorriso_dvd
-    assert "-udf" in xorriso_dvd
+    assert "-udf" not in xorriso_dvd
     assert "MY_MOVIE" in xorriso_dvd
     assert "/tmp/author" in xorriso_dvd
 
@@ -80,8 +86,15 @@ def test_iso_commands():
     assert "-dvd-video" in dvd_auto
     assert "-udf" in dvd_auto
 
+    fallback_cmd = build_dvd_fallback_iso_command("/tmp/author", "/output/movie.iso", "MY_MOVIE")
+    assert "-udf" in fallback_cmd
+    assert "-dvd-video" not in fallback_cmd
+    assert "MY_MOVIE" in fallback_cmd
+    assert "-o" in fallback_cmd
+    assert "/output/movie.iso" in fallback_cmd
+    assert "/tmp/author" in fallback_cmd
+
     bd_cmd = build_xorriso_bd_command("/tmp/bd_author", "/output/bd.iso", "MY_BLURAY")
-    assert "-udf" in bd_cmd
     assert "MY_BLURAY" in bd_cmd
     assert "-iso-level" in bd_cmd
     assert "3" in bd_cmd

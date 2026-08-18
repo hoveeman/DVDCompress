@@ -720,7 +720,8 @@ async def test_e2e_multi_title_tv_series_batch_bd50(tmp_path):
     # Verify xorriso was invoked for Blu-ray ISO
     xorriso_cmds = [c for c in executed_cmds if c[0] == "xorriso"]
     assert len(xorriso_cmds) == 1
-    assert "-udf" in xorriso_cmds[0]
+    assert "-iso-level" in xorriso_cmds[0]
+    assert "3" in xorriso_cmds[0]
     assert "SCIFI_ANTHOLOGY_BD" in xorriso_cmds[0]
 
     # Verify generated tsMuxeR meta structure

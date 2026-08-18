@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dvdcompress"
-version = "1.0.3"
+version = "1.0.4"
 description = "Containerized hardware-accelerated DVD and Blu-ray transcoding, authoring, and burning web application."
 requires-python = ">=3.10"
 dependencies = [

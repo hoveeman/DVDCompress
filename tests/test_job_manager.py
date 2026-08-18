@@ -1112,6 +1112,19 @@ async def test_job_pipeline_dvd_iso_creation_with_udf_fallback_on_genisoimage_er
     assert any("UDF fallback" in log for log in job.logs)
     assert os.path.exists(job.output_iso_path)
 
+    # Verify that the fallback command was genisoimage/mkisofs with -udf and without -dvd-video
+    fallback_invocations = [
+        c for c in executed_cmds
+        if ("genisoimage" in c[0] or "mkisofs" in c[0]) and "-udf" in c and "-dvd-video" not in c
+    ]
+    assert len(fallback_invocations) == 1
+    # Verify xorriso was never invoked with -udf
+    xorriso_udf_invocations = [
+        c for c in executed_cmds
+        if "xorriso" in c[0] and "-udf" in c
+    ]
+    assert len(xorriso_udf_invocations) == 0
+
 
 
 
