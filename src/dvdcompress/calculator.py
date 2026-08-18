@@ -60,7 +60,7 @@ def calculate_bitrate_budget(
     audio_bits = total_audio_kbps * 1000 * total_duration_sec
 
     # Available video bits
-    available_video_bits = usable_bits - audio_bits
+    available_video_bits = max(0.0, usable_bits - audio_bits)
     raw_video_bitrate_kbps = int((available_video_bits / total_duration_sec) / 1000)
 
     warnings = []
@@ -84,7 +84,7 @@ def calculate_bitrate_budget(
 
     # Check total bitrate
     if video_bitrate + total_audio_kbps > max_total:
-        video_bitrate = max_total - total_audio_kbps
+        video_bitrate = max(0, max_total - total_audio_kbps)
 
     mux_overhead_kbps = int((video_bitrate + total_audio_kbps) * 0.04)
     total_kbps = video_bitrate + total_audio_kbps + mux_overhead_kbps

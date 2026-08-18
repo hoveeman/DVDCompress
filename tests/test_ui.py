@@ -265,6 +265,23 @@ def test_complexity_sampling_ui_elements():
     assert "/api/analyze-complexity" in js
 
 
+def test_standalone_iso_format_and_speed_label_ui():
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    html = res_html.text
+    assert 'id="standalone-iso-format-badge"' in html
+    assert 'id="metric-speed-label"' in html
+
+    res_js = client.get("/js/app.js")
+    assert res_js.status_code == 200
+    js = res_js.text
+    assert "handleIsoPathChanged" in js
+    assert "standalone-iso-format-badge" in js
+    assert "metric-speed-label" in js
+    assert "Burn Speed" in js
+
+
+
 
 
 

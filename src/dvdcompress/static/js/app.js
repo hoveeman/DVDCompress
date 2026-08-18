@@ -31,6 +31,8 @@
       is_bluray: false,
       device_path: '',
       burn_speed: 4,
+      disc_type: null,
+      iso_size_bytes: null,
     },
     drives: [],
     telemetry: null,
@@ -183,7 +185,18 @@
     // Standalone Burner Media Type
     setupSegmentGroup('control-burner-media-type', (val) => {
       state.standaloneBurner.is_bluray = (val === 'bluray');
+      const isoInput = document.getElementById('input-burn-iso-path');
+      if (isoInput && isoInput.value) {
+        handleIsoPathChanged(isoInput.value.trim(), state.standaloneBurner.iso_size_bytes);
+      }
     });
+
+    const isoPathInput = document.getElementById('input-burn-iso-path');
+    if (isoPathInput) {
+      isoPathInput.addEventListener('input', (e) => {
+        handleIsoPathChanged(e.target.value.trim(), null);
+      });
+    }
 
     // Output Mode Select
     const outputModeSelect = document.getElementById('select-output-mode');
@@ -511,7 +524,10 @@
             isoBtn.addEventListener('click', (e) => {
               e.stopPropagation();
               const isoInput = document.getElementById('input-burn-iso-path');
-              if (isoInput) isoInput.value = file.path;
+              if (isoInput) {
+                isoInput.value = file.path;
+                handleIsoPathChanged(file.path, file.size_bytes);
+              }
               switchTab('view-burner');
             });
           }
@@ -824,15 +840,20 @@
 
     const totalDuration = state.playlist.reduce((acc, item) => acc + (item.duration_sec || 0), 0);
     
-    // Collect all audio tracks bitrates or fallback to 192 kbps
-    const audioTracks = [];
+    // Collect target audio bitrates for each title (1 AC3 audio track per title: 384 kbps for 5.1ch on DVD, 448 kbps for 5.1ch on BD, 192 kbps for stereo)
+    const isDvd = (state.config.disc_type === 'dvd5' || state.config.disc_type === 'dvd9');
+    let totalTargetAudioKbps = 0;
     state.playlist.forEach(item => {
-      if (item.audio_streams && item.audio_streams.length > 0) {
-        item.audio_streams.forEach(a => audioTracks.push(a.bitrate ? Math.round(a.bitrate / 1000) : 192));
+      const firstAudio = (item.audio_streams && item.audio_streams.length > 0) ? item.audio_streams[0] : null;
+      const channels = firstAudio ? (firstAudio.channels || 2) : (isDvd ? 2 : 6);
+      if (channels >= 6) {
+        totalTargetAudioKbps += (isDvd ? 384 : 448);
       } else {
-        audioTracks.push(192);
+        totalTargetAudioKbps += 192;
       }
     });
+
+    const avgTargetAudioKbps = Math.max(192, Math.round(totalTargetAudioKbps / state.playlist.length));
 
     try {
       const res = await fetch('/api/calculate', {
@@ -841,7 +862,7 @@
         body: JSON.stringify({
           total_duration_sec: totalDuration,
           disc_type: state.config.disc_type,
-          audio_tracks_kbps: audioTracks.length > 0 ? audioTracks : [192],
+          audio_tracks_kbps: [avgTargetAudioKbps],
           video_count: state.playlist.length,
         }),
       });
@@ -1136,6 +1157,46 @@
     }
   }
 
+  function handleIsoPathChanged(filePath, knownSizeBytes = null) {
+    const badge = document.getElementById('standalone-iso-format-badge');
+    if (!filePath) {
+      if (badge) badge.style.display = 'none';
+      state.standaloneBurner.disc_type = null;
+      return;
+    }
+
+    let formatLabel = 'ISO Image';
+    let isBluray = state.standaloneBurner.is_bluray;
+    let discType = isBluray ? 'bd25' : 'dvd5';
+
+    if (knownSizeBytes !== null && knownSizeBytes !== undefined && knownSizeBytes > 0) {
+      if (isBluray) {
+        if (knownSizeBytes > 100 * 1024 * 1024 * 1024) { discType = 'bd128'; formatLabel = `BDXL BD-128 (${formatBytes(knownSizeBytes)})`; }
+        else if (knownSizeBytes > 66 * 1024 * 1024 * 1024) { discType = 'bd100'; formatLabel = `BDXL BD-100 (${formatBytes(knownSizeBytes)})`; }
+        else if (knownSizeBytes > 50 * 1024 * 1024 * 1024) { discType = 'bd66'; formatLabel = `BD-66 UHD (${formatBytes(knownSizeBytes)})`; }
+        else if (knownSizeBytes > 25 * 1024 * 1024 * 1024) { discType = 'bd50'; formatLabel = `BD-50 (${formatBytes(knownSizeBytes)})`; }
+        else { discType = 'bd25'; formatLabel = `BD-25 (${formatBytes(knownSizeBytes)})`; }
+      } else {
+        if (knownSizeBytes > 4700000000) {
+          discType = 'dvd9';
+          formatLabel = `DVD-9 (${formatBytes(knownSizeBytes)})`;
+        } else {
+          discType = 'dvd5';
+          formatLabel = `DVD-5 (${formatBytes(knownSizeBytes)})`;
+        }
+      }
+    } else {
+      formatLabel = isBluray ? 'Blu-ray ISO' : 'DVD ISO';
+    }
+
+    state.standaloneBurner.disc_type = discType;
+    state.standaloneBurner.iso_size_bytes = knownSizeBytes;
+    if (badge) {
+      badge.textContent = formatLabel;
+      badge.style.display = 'inline-block';
+    }
+  }
+
   // Quick select ISOs in /output
   async function loadQuickIsoFiles() {
     const list = document.getElementById('iso-quick-list');
@@ -1162,7 +1223,10 @@
         `;
         item.addEventListener('click', () => {
           const input = document.getElementById('input-burn-iso-path');
-          if (input) input.value = file.path;
+          if (input) {
+            input.value = file.path;
+            handleIsoPathChanged(file.path, file.size_bytes);
+          }
         });
         list.appendChild(item);
       });
@@ -1254,6 +1318,7 @@
       device_path: drivePath,
       burn_speed: speed,
       is_bluray: state.standaloneBurner.is_bluray,
+      disc_type: state.standaloneBurner.disc_type || undefined,
     };
 
     try {
@@ -1451,6 +1516,7 @@
     const overallProg = document.getElementById('metric-overall-progress');
     const stageProg = document.getElementById('metric-stage-progress');
     const fpsSpeed = document.getElementById('metric-fps-speed');
+    const speedLabel = document.getElementById('metric-speed-label');
     const etaElem = document.getElementById('metric-eta');
     const btnCancel = document.getElementById('btn-cancel-job');
     const btnPause = document.getElementById('btn-pause-job');
@@ -1466,8 +1532,21 @@
 
     if (overallProg) overallProg.textContent = `${(job.progress_percent || 0).toFixed(1)}%`;
     if (stageProg) stageProg.textContent = `${(job.stage_percent || 0).toFixed(1)}%`;
+
+    if (speedLabel) {
+      if (job.stage === 'burning' || job.output_mode === 'burn_direct') {
+        speedLabel.textContent = 'Burn Speed';
+      } else {
+        speedLabel.textContent = 'Encoding Speed';
+      }
+    }
+
     if (fpsSpeed) {
-      fpsSpeed.textContent = job.fps > 0 ? `${job.fps.toFixed(1)} FPS (${job.speed || '1.0x'})` : `${job.speed || '1.0x'}`;
+      if (job.stage === 'burning' || job.output_mode === 'burn_direct') {
+        fpsSpeed.textContent = job.speed || '1.0x';
+      } else {
+        fpsSpeed.textContent = job.fps > 0 ? `${job.fps.toFixed(1)} FPS (${job.speed || '1.0x'})` : `${job.speed || '1.0x'}`;
+      }
     }
     if (etaElem) etaElem.textContent = job.eta || '--:--';
 

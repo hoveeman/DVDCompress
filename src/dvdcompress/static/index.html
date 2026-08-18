@@ -508,7 +508,7 @@
                 <span class="metric-card-val" id="metric-stage-progress">0.0%</span>
               </div>
               <div class="metric-card">
-                <span class="metric-card-label">Encoding Speed</span>
+                <span class="metric-card-label" id="metric-speed-label">Encoding Speed</span>
                 <span class="metric-card-val" id="metric-fps-speed">-- FPS (1.0x)</span>
               </div>
               <div class="metric-card">
@@ -615,7 +615,10 @@
 
           <div class="card-body">
             <div class="form-group">
-              <label class="form-label" for="input-burn-iso-path">ISO Image File Path</label>
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35rem;">
+                <label class="form-label" for="input-burn-iso-path" style="margin-bottom: 0;">ISO Image File Path</label>
+                <span id="standalone-iso-format-badge" class="badge badge-stream" style="display: none;"></span>
+              </div>
               <input type="text" id="input-burn-iso-path" class="form-input" placeholder="/output/disc_image.iso">
             </div>
 

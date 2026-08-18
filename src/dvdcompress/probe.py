@@ -297,14 +297,16 @@ async def analyze_video_complexity(
     if total_duration_sec <= 0:
         total_duration_sec = 3600.0
 
-    # Collect audio bitrates
+    # Collect audio bitrates based on target AC3 transcode (1 track per title: 384k 5.1ch on DVD, 448k 5.1ch on BD, 192k stereo)
     total_audio_kbps = 0
     for m in media_infos:
-        if m.audio_streams:
-            for a in m.audio_streams:
-                total_audio_kbps += int(a.bitrate / 1000) if a.bitrate else 192
+        first_audio = m.audio_streams[0] if m.audio_streams else None
+        channels = first_audio.channels if first_audio else (6 if not is_dvd else 2)
+        if channels >= 6:
+            track_kbps = 384 if is_dvd else 448
         else:
-            total_audio_kbps += 192
+            track_kbps = 192
+        total_audio_kbps += track_kbps
 
     avg_audio_kbps = max(192, total_audio_kbps // len(media_infos))
 

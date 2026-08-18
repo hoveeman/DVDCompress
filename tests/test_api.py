@@ -332,6 +332,72 @@ def test_api_burn_iso(tmp_path):
     job = job_manager.get_job(data["job_id"])
     assert job is not None
     assert job.output_mode == OutputMode.BURN_DIRECT
+    assert job.disc_type == DiscType.DVD5
+
+
+def test_api_burn_iso_auto_detect_dvd9(tmp_path):
+    iso_file = tmp_path / "mary_poppins.iso"
+    with open(iso_file, "wb") as f:
+        f.truncate(6_800_000_000)  # Sparse 6.8 GB file for DVD-9
+
+    res = client.post(
+        "/api/burn-iso",
+        json={
+            "iso_path": str(iso_file),
+            "device_path": "/dev/sr0",
+            "burn_speed": 8,
+            "is_bluray": False,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    job = job_manager.get_job(data["job_id"])
+    assert job is not None
+    assert job.disc_type == DiscType.DVD9
+    assert job.burn_speed == 8
+
+
+def test_api_burn_iso_auto_detect_bd50(tmp_path):
+    iso_file = tmp_path / "movie_bd50.iso"
+    with open(iso_file, "wb") as f:
+        f.truncate(45_000_000_000)  # Sparse 45 GB file for BD-50
+
+    res = client.post(
+        "/api/burn-iso",
+        json={
+            "iso_path": str(iso_file),
+            "device_path": "/dev/sr0",
+            "burn_speed": 4,
+            "is_bluray": True,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    job = job_manager.get_job(data["job_id"])
+    assert job is not None
+    assert job.disc_type == DiscType.BD50
+
+
+def test_api_burn_iso_explicit_disc_type(tmp_path):
+    iso_file = tmp_path / "custom.iso"
+    iso_file.write_bytes(b"small iso")
+
+    res = client.post(
+        "/api/burn-iso",
+        json={
+            "iso_path": str(iso_file),
+            "device_path": "/dev/sr0",
+            "burn_speed": 8,
+            "disc_type": "dvd9",
+            "is_bluray": False,
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    job = job_manager.get_job(data["job_id"])
+    assert job is not None
+    assert job.disc_type == DiscType.DVD9
+
 
 
 @pytest.mark.asyncio

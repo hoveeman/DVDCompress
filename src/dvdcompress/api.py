@@ -108,6 +108,38 @@ class BurnIsoRequest(BaseModel):
     device_path: str
     burn_speed: int = 4
     is_bluray: bool = False
+    disc_type: Optional[DiscType] = None
+
+
+def detect_iso_disc_type(
+    iso_path: str,
+    is_bluray: bool = False,
+    disc_type: Optional[DiscType] = None,
+) -> DiscType:
+    """Intelligently determine disc format (DVD-5, DVD-9, BD-25, BD-50, etc.) from ISO size."""
+    if disc_type:
+        return disc_type
+    try:
+        size = os.path.getsize(iso_path)
+    except OSError:
+        size = 0
+
+    if is_bluray:
+        if size > 100 * (1024**3):
+            return DiscType.BD128
+        elif size > 66 * (1024**3):
+            return DiscType.BD100
+        elif size > 50 * (1024**3):
+            return DiscType.BD66
+        elif size > 25_000_000_000:
+            return DiscType.BD50
+        return DiscType.BD25
+    else:
+        # Standard single-layer DVD-5 raw capacity is 4.7 GB (~4.7e9 bytes)
+        if size > 4_700_000_000:
+            return DiscType.DVD9
+        return DiscType.DVD5
+
 
 
 class CreatePreviewRequest(BaseModel):
@@ -371,7 +403,9 @@ async def burn_iso(req: BurnIsoRequest):
             status_code=404, detail=f"ISO file does not exist: {req.iso_path}"
         )
 
-    disc_type = DiscType.BD25 if req.is_bluray else DiscType.DVD5
+    disc_type = detect_iso_disc_type(
+        req.iso_path, is_bluray=req.is_bluray, disc_type=req.disc_type
+    )
     output_name = os.path.splitext(os.path.basename(req.iso_path))[0]
     job_id = job_manager.create_job(
         input_files=[req.iso_path],

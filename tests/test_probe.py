@@ -292,5 +292,51 @@ async def test_analyze_video_complexity(tmp_path):
             assert res.sample_count > 0
 
 
+@pytest.mark.asyncio
+async def test_analyze_video_complexity_multi_audio_tracks(tmp_path):
+    from dvdcompress.models import DiscType, MediaInfo, AudioStreamInfo
+    from dvdcompress.probe import analyze_video_complexity
+    from unittest.mock import patch, AsyncMock
 
+    test_file = tmp_path / "movie_multiaudio.mkv"
+    test_file.write_bytes(b"dummy video")
 
+    # Simulate a Blu-ray rip with 5 audio streams totaling over 12 Mbps
+    audio_streams = [
+        AudioStreamInfo(index=1, codec_name="truehd", channels=8, bitrate=4500000),
+        AudioStreamInfo(index=2, codec_name="dts_hd_ma", channels=6, bitrate=3500000),
+        AudioStreamInfo(index=3, codec_name="ac3", channels=6, bitrate=640000),
+        AudioStreamInfo(index=4, codec_name="ac3", channels=2, bitrate=192000),
+        AudioStreamInfo(index=5, codec_name="ac3", channels=2, bitrate=192000),
+    ]
+
+    mock_info = MediaInfo(
+        path=str(test_file),
+        filename="movie_multiaudio.mkv",
+        duration_sec=9654.0,  # 160.9 mins (Harry Potter length)
+        width=1920,
+        height=1080,
+        aspect_ratio="16:9",
+        frame_rate=23.976,
+        video_codec="h264",
+        audio_streams=audio_streams,
+        subtitle_streams=[],
+        chapters_count=10,
+        chapter_times=[0.0, 600.0, 1200.0],
+        size_bytes=30000000000,
+    )
+
+    with patch("dvdcompress.probe.probe_media_file", new_callable=AsyncMock) as mock_probe:
+        mock_probe.return_value = mock_info
+        with patch("dvdcompress.probe.sample_snippet_bitrate", new_callable=AsyncMock) as mock_sample:
+            mock_sample.return_value = 1963.0  # 1,963 kbps empirical VBR
+
+            res = await analyze_video_complexity(
+                input_files=[str(test_file)],
+                disc_type=DiscType.DVD9,
+            )
+
+            assert res.empirical_video_bitrate_kbps == 1963
+            # With target AC3 audio at 384 kbps (5.1ch), projected ISO size should be ~2.9 GB, NOT 17.7 GB!
+            assert 2.5 <= res.projected_iso_size_gb <= 3.5
+            assert res.recommended_disc_type == DiscType.DVD5
