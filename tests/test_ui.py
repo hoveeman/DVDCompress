@@ -281,6 +281,17 @@ def test_standalone_iso_format_and_speed_label_ui():
     assert "Burn Speed" in js
 
 
+def test_job_history_retry_and_edit_ui():
+    res_js = client.get("/js/app.js")
+    assert res_js.status_code == 200
+    js = res_js.text
+    assert "btn-retry-job-row" in js
+    assert "btn-edit-job-row" in js
+    assert "retryJob" in js
+    assert "editJobInAuthoring" in js
+
+
+
 
 
 

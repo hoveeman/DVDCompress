@@ -398,6 +398,18 @@
     });
   }
 
+  function setSegmentGroupValue(containerId, value) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.querySelectorAll('.segmented-option').forEach(opt => {
+      if (opt.getAttribute('data-value') === value) {
+        opt.classList.add('active');
+      } else {
+        opt.classList.remove('active');
+      }
+    });
+  }
+
   // File Browser Implementation
   async function loadBrowserPath(targetPath) {
     const pathBar = document.getElementById('browser-path-bar');
@@ -1705,6 +1717,8 @@
             <button class="btn btn-secondary btn-sm btn-monitor-job">Monitor</button>
             ${isActive ? `<button class="btn btn-secondary btn-sm btn-pause-job-row" style="margin-left: 4px;">${isPaused ? 'Resume' : 'Pause'}</button>` : ''}
             ${isActive ? '<button class="btn btn-danger btn-sm btn-cancel-job-row" style="margin-left: 4px;">Cancel</button>' : ''}
+            ${!isActive ? '<button class="btn btn-secondary btn-sm btn-edit-job-row" style="margin-left: 4px;" title="Edit and tweak in authoring">Edit</button>' : ''}
+            ${!isActive ? '<button class="btn btn-primary btn-sm btn-retry-job-row" style="margin-left: 4px;" title="Re-run job with same settings">Retry</button>' : ''}
             ${!isActive ? '<button class="btn btn-danger btn-sm btn-delete-job-row" style="margin-left: 4px;" title="Remove this job from history">Remove</button>' : ''}
           </td>
         `;
@@ -1727,6 +1741,14 @@
           }
         });
 
+        tr.querySelector('.btn-edit-job-row')?.addEventListener('click', () => {
+          editJobInAuthoring(j);
+        });
+
+        tr.querySelector('.btn-retry-job-row')?.addEventListener('click', () => {
+          retryJob(j.job_id, j.output_name);
+        });
+
         tr.querySelector('.btn-delete-job-row')?.addEventListener('click', async () => {
           try {
             const res = await fetch(`/api/jobs/${j.job_id}`, { method: 'DELETE' });
@@ -1746,6 +1768,123 @@
 
     } catch (err) {
       console.error('Failed to load job history:', err);
+    }
+  }
+
+  // Restore and Edit Job in Authoring View
+  async function editJobInAuthoring(job) {
+    if (!job) return;
+
+    // 1. Output Name
+    state.config.output_name = job.output_name || 'DVD_PROJECT';
+    const inputOutputName = document.getElementById('input-output-name');
+    if (inputOutputName) inputOutputName.value = state.config.output_name;
+
+    // 2. Disc Type
+    if (job.disc_type) {
+      setDiscType(job.disc_type);
+    }
+
+    // 3. TV Standard
+    if (job.tv_standard) {
+      state.config.tv_standard = job.tv_standard;
+      setSegmentGroupValue('control-tv-standard', job.tv_standard);
+    }
+
+    // 4. Aspect Ratio
+    if (job.aspect_ratio) {
+      state.config.aspect_ratio = job.aspect_ratio;
+      setSegmentGroupValue('control-aspect-ratio', job.aspect_ratio);
+    }
+
+    // 5. Menu Mode
+    if (job.menu_mode) {
+      state.config.menu_mode = job.menu_mode;
+      setSegmentGroupValue('control-menu-mode', job.menu_mode);
+    }
+
+    // 6. Output Mode & Burner Options
+    if (job.output_mode) {
+      state.config.output_mode = job.output_mode;
+      const selectOutputMode = document.getElementById('select-output-mode');
+      if (selectOutputMode) selectOutputMode.value = job.output_mode;
+      const burnerOptionsGroup = document.getElementById('burner-options-group');
+      if (burnerOptionsGroup) {
+        const needsBurner = (job.output_mode === 'author_and_burn' || job.output_mode === 'burn_direct');
+        burnerOptionsGroup.style.display = needsBurner ? 'block' : 'none';
+      }
+    }
+
+    // 7. Burn Speed
+    if (job.burn_speed) {
+      state.config.burn_speed = job.burn_speed;
+      const selectBurnSpeed = document.getElementById('select-burn-speed');
+      if (selectBurnSpeed) selectBurnSpeed.value = job.burn_speed.toString();
+    }
+
+    // 8. Burner Device
+    if (job.burner_device) {
+      state.config.burner_device = job.burner_device;
+      const selectBurner = document.getElementById('select-burner-device');
+      if (selectBurner) selectBurner.value = job.burner_device;
+    }
+
+    // 9. Hardware Acceleration (GPU)
+    state.config.use_gpu = (job.use_gpu !== false);
+    const toggleGpu = document.getElementById('toggle-gpu');
+    if (toggleGpu) toggleGpu.checked = state.config.use_gpu;
+    const descGpu = document.getElementById('gpu-toggle-desc');
+    if (descGpu) descGpu.textContent = state.config.use_gpu ? 'NVIDIA NVENC / CUDA' : 'CPU (libx264 / libavcodec)';
+
+    // 10. Direct Passthrough
+    state.config.passthrough = !!job.passthrough;
+    const togglePassthrough = document.getElementById('toggle-passthrough');
+    if (togglePassthrough) togglePassthrough.checked = state.config.passthrough;
+
+    // 11. Clear playlist and re-probe / load input files
+    state.playlist = [];
+    renderPlaylist();
+
+    if (Array.isArray(job.input_files) && job.input_files.length > 0) {
+      showToast(`Loading ${job.input_files.length} file(s) for '${job.output_name}'...`, 'info');
+      for (const filePath of job.input_files) {
+        await addFileToPlaylist(filePath);
+      }
+
+      // Restore selected subtitle indices if provided
+      if (Array.isArray(job.selected_subtitle_indices) && job.selected_subtitle_indices.length > 0 && state.playlist.length > 0) {
+        const firstItem = state.playlist[0];
+        if (firstItem && Array.isArray(firstItem.subtitle_streams)) {
+          firstItem.subtitle_streams.forEach(sub => {
+            sub.is_selected = job.selected_subtitle_indices.includes(sub.index);
+          });
+          renderPlaylist();
+        }
+      }
+    }
+
+    recalculateBudget();
+    switchTab('view-authoring');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    showToast(`Loaded project settings for '${job.output_name}'`, 'success');
+  }
+
+  // Re-enqueue and retry job
+  async function retryJob(jobId, outputName) {
+    try {
+      showToast(`Retrying job '${outputName || jobId}'...`, 'info');
+      const res = await fetch(`/api/jobs/${jobId}/retry`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      showToast(`Job re-queued successfully (${data.job_id})`, 'success');
+      connectJobWebSocket(data.job_id);
+      loadJobHistory();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      showToast(`Failed to retry job: ${err.message}`, 'error');
     }
   }
 
