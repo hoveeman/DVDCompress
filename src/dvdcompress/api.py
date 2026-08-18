@@ -509,6 +509,47 @@ async def resume_job_endpoint(job_id: str):
     return {"status": "resumed"}
 
 
+@app.post("/api/jobs/{job_id}/retry")
+async def retry_job_endpoint(job_id: str):
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    for f in job.input_files:
+        if not os.path.exists(f):
+            raise HTTPException(
+                status_code=400, detail=f"Input file does not exist: {f}"
+            )
+
+    new_job_id = job_manager.create_job(
+        input_files=job.input_files,
+        disc_type=job.disc_type,
+        output_mode=job.output_mode,
+        output_name=job.output_name,
+        tv_standard=job.tv_standard,
+        aspect_ratio=job.aspect_ratio,
+        menu_mode=job.menu_mode,
+        burner_device=job.burner_device,
+        burn_speed=job.burn_speed,
+        use_gpu=job.use_gpu,
+        passthrough=job.passthrough,
+        selected_subtitle_indices=job.selected_subtitle_indices,
+    )
+    await job_manager.start_job(
+        new_job_id, scratch_dir=get_scratch_dir(), output_dir=get_output_dir()
+    )
+    new_job = job_manager.get_job(new_job_id)
+    status_val = "queued" if (new_job and new_job.stage == JobStage.QUEUED) else "started"
+    return {
+        "job_id": new_job_id,
+        "status": status_val,
+        "output_name": new_job.output_name if new_job else job.output_name,
+        "disc_type": new_job.disc_type if new_job else job.disc_type,
+        "input_files": new_job.input_files if new_job else job.input_files,
+    }
+
+
+
 @app.delete("/api/jobs/{job_id}")
 def delete_job_endpoint(job_id: str):
     job = job_manager.get_job(job_id)

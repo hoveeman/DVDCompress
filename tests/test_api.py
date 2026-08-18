@@ -719,6 +719,49 @@ def test_api_analyze_complexity(tmp_path):
         assert "Low" in data["complexity_level"]
 
 
+def test_api_retry_job(tmp_path):
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"dummy")
+
+    # 1. Create a job first
+    with patch.object(job_manager, "start_job", new_callable=AsyncMock) as mock_start:
+        mock_start.return_value = None
+        res_create = client.post(
+            "/api/jobs",
+            json={
+                "input_files": [str(clip)],
+                "disc_type": "dvd9",
+                "output_mode": "iso_only",
+                "output_name": "hp_movie",
+                "tv_standard": "ntsc",
+                "aspect_ratio": "16:9",
+                "menu_mode": "autoplay",
+                "use_gpu": False,
+                "passthrough": False,
+            },
+        )
+        assert res_create.status_code == 200
+        orig_id = res_create.json()["job_id"]
+
+    # 2. Retry non-existent job returns 404
+    res_404 = client.post("/api/jobs/nonexistent_id/retry")
+    assert res_404.status_code == 404
+
+    # 3. Retry the valid job
+    with patch.object(job_manager, "start_job", new_callable=AsyncMock) as mock_start:
+        mock_start.return_value = None
+        res_retry = client.post(f"/api/jobs/{orig_id}/retry")
+        assert res_retry.status_code == 200
+        data_retry = res_retry.json()
+        new_id = data_retry["job_id"]
+        assert new_id != orig_id
+        assert data_retry["output_name"] == "hp_movie"
+        assert data_retry["disc_type"] == "dvd9"
+        assert data_retry["input_files"] == [str(clip)]
+        mock_start.assert_called_once()
+
+
+
 
 
 
