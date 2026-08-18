@@ -75,7 +75,7 @@ __all__ = [
     "JobStage",
     "Job",
     "JobManager",
+    "__version__",
 ]
 
-
-
+__version__ = "1.0.1"
