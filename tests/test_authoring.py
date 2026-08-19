@@ -17,7 +17,7 @@ def test_dvdauthor_xml_single_title_autoplay():
         menu_mode=MenuMode.AUTOPLAY,
         tv_standard=TVStandard.NTSC,
     )
-    assert "<dvdauthor" in xml
+    assert '<dvdauthor dest="VIDEO_TS" jumppad="1">' in xml
     assert "<vob file=\"/tmp/title1.mpg\"" in xml
     assert "chapters=\"00:00:00.000,00:05:00.000,00:10:00.000\"" in xml
     assert 'format="ntsc"' in xml

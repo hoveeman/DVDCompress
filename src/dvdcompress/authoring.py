@@ -163,7 +163,7 @@ def generate_dvdauthor_xml(
     video_format = "ntsc" if tv_standard in (TVStandard.NTSC, TVStandard.AUTO) else "pal"
 
     xml_lines = [
-        '<dvdauthor dest="VIDEO_TS">',
+        '<dvdauthor dest="VIDEO_TS" jumppad="1">',
         '  <vmgm />',
         '  <titleset>',
         '    <titles>',
