@@ -163,7 +163,7 @@ def generate_dvdauthor_xml(
     video_format = "ntsc" if tv_standard in (TVStandard.NTSC, TVStandard.AUTO) else "pal"
 
     xml_lines = [
-        '<dvdauthor dest="VIDEO_TS" jumppad="1">',
+        '<dvdauthor dest="VIDEO_TS">',
         '  <vmgm />',
         '  <titleset>',
         '    <titles>',
@@ -185,11 +185,11 @@ def generate_dvdauthor_xml(
         chap_str = ",".join([format_chapter_time(c) for c in chaps])
         xml_lines.append("      <pgc>")
         xml_lines.append(f'        <vob file="{mpg}" chapters="{chap_str}" />')
-        # Play next title or loop back to title 1
+        # Play next title or loop back to title 1 within the same titleset
         if idx < len(titles_mpg) - 1:
-            xml_lines.append(f"        <post>jump title {idx + 2};</post>")
+            xml_lines.append(f"        <post>jump pgc {idx + 2};</post>")
         else:
-            xml_lines.append("        <post>jump title 1;</post>")
+            xml_lines.append("        <post>jump pgc 1;</post>")
         xml_lines.append("      </pgc>")
 
     xml_lines.extend([

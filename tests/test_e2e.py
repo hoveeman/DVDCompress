@@ -634,10 +634,10 @@ async def test_e2e_multi_title_tv_series_batch_dvd9(tmp_path):
         menu_mode=MenuMode.AUTOPLAY,
         tv_standard=TVStandard.NTSC,
     )
-    assert "<post>jump title 2;</post>" in xml_gen
-    assert "<post>jump title 3;</post>" in xml_gen
-    assert "<post>jump title 6;</post>" in xml_gen
-    assert "<post>jump title 1;</post>" in xml_gen  # loops back to 1 after last title
+    assert "<post>jump pgc 2;</post>" in xml_gen
+    assert "<post>jump pgc 3;</post>" in xml_gen
+    assert "<post>jump pgc 6;</post>" in xml_gen
+    assert "<post>jump pgc 1;</post>" in xml_gen  # loops back to 1 after last title
 
     # Verify ISO was created and validated
     assert os.path.exists(job.output_iso_path)
