@@ -43,6 +43,7 @@ Equipped with a real-time mathematical bitrate budget calculator, NVIDIA GPU dec
 - ⏭️ **Full-Movie Chapters:** Preserves embedded chapter markers from source files, or automatically creates 5-minute interval chapters across the entire movie duration.
 - ⚡ **Hardware Acceleration:** Full NVIDIA NVDEC hardware decode for all common formats, NVIDIA NVENC hardware encoding for Blu-ray streams, and multi-core CPU matrix-optimized transcoding with automatic fallback.
 - ⏸️ **Pause / Resume Queue Controls:** Suspend in-progress transcoding or burning jobs on the fly. When a running job completes, DVDCompress automatically picks up and resumes the next queued job.
+- 🎯 **Automated DVD-9 Seamless Layer Break Calculation (v1.0.5):** Automatically parses ISO9660 directory structures and DVD-Video IFO Cell Address Tables (`VTS_C_ADT`) on dual-layer images to calculate the optimal 16-sector ECC-aligned chapter/cell layer break point ($L_0 \ge L_1$). Injects `-use-the-force-luke=break:<sector>` into `growisofs` and streams live real-time layer transition telemetry to eliminate skips, stutter, and decoder buffer underruns on standalone DVD players.
 - 🔥 **Direct Optical Disc Burning:** Real-time SCSI/SATA/USB optical drive detection (`/dev/sr*`, `/dev/sg*`), disc media status inspection, and rock-solid burning with buffer underrun protection via `growisofs` and `cdrskin`/`xorriso`.
 - 🌐 **Modern Real-Time Web Interface:** Live WebSocket pipeline monitoring, interactive media directory navigation, real-time transcoding FPS/speed/ETA telemetry, live CPU, RAM, and GPU/VRAM gauges, and integrated log terminal stream.
 - 💿 **Standalone ISO Burner:** Quickly burn existing ISO files directly to disc with customizable burn speeds.
@@ -226,11 +227,20 @@ To enable physical disc burning from inside Docker, pass both the optical block 
    ```
 
 3. **Pass devices to container:**
-   ```yaml
-   devices:
-     - /dev/sr0:/dev/sr0
-     - /dev/sg0:/dev/sg0
-   ```
+    ```yaml
+    devices:
+      - /dev/sr0:/dev/sr0
+      - /dev/sg0:/dev/sg0
+    ```
+
+### Dual-Layer (DVD-9) Automated Layer Break & Burning
+
+When burning DVD-9 dual-layer media (DVD+R DL / DVD-R DL), DVDCompress automatically:
+1. **Locates Chapter Boundaries:** Scans the disc filesystem and IFO navigation tables to place the physical layer break at an exact Chapter/Cell start sector with closed GOP sequence headers.
+2. **Enforces Physical Constraints:** Ensures Layer 0 holds $\ge 50\%$ of data ($L_0 \ge L_1$) aligned to a 32 KB (16-sector) ECC block.
+3. **Programs Optical Hardware:** Passes `-use-the-force-luke=break:<sector>` to `growisofs`.
+4. **Streams Live Transition Telemetry:** Alerts the live log terminal the exact moment the drive laser refocuses onto Layer 1.
+5. **Recommends 4x Write Speed:** Automatically applies safe write speeds to ensure optimal dye reflectivity and track pitch stability.
 
 ---
 
