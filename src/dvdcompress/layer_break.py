@@ -33,7 +33,19 @@ def parse_vts_ifo_cell_offsets(ifo_bytes: bytes) -> List[int]:
     if table_offset + 8 > len(ifo_bytes):
         return []
 
-    num_cells = struct.unpack(">H", ifo_bytes[table_offset + 2:table_offset + 4])[0]
+    # In DVD-Video VTS_C_ADT header:
+    # Offset 0..1: Number of VOBs
+    # Offset 2..3: Reserved (0x0000)
+    # Offset 4..7: End byte offset of table (relative to VTS_C_ADT start)
+    end_byte = struct.unpack(">I", ifo_bytes[table_offset + 4:table_offset + 8])[0]
+    num_cells = (end_byte + 1 - 8) // 12 if end_byte >= 19 else 0
+
+    # Fallback to offset 2..3 if end_byte is 0
+    if num_cells <= 0:
+        raw_num = struct.unpack(">H", ifo_bytes[table_offset + 2:table_offset + 4])[0]
+        if raw_num > 0:
+            num_cells = raw_num
+
     cell_offsets: List[int] = []
 
     for i in range(num_cells):

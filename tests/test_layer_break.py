@@ -27,8 +27,8 @@ def create_synthetic_vts_ifo(cell_start_sectors: list[int]) -> bytes:
     table_offset = 2048
     num_cells = len(cell_start_sectors)
     struct.pack_into(">H", ifo, table_offset + 0, 1)  # 1 VOB
-    struct.pack_into(">H", ifo, table_offset + 2, num_cells)  # num cells
-    struct.pack_into(">I", ifo, table_offset + 4, 8 + num_cells * 12)  # end byte
+    struct.pack_into(">H", ifo, table_offset + 2, 0)  # Reserved in spec
+    struct.pack_into(">I", ifo, table_offset + 4, 8 + num_cells * 12 - 1)  # end byte
 
     for i, start_sec in enumerate(cell_start_sectors):
         entry_offset = table_offset + 8 + (i * 12)
