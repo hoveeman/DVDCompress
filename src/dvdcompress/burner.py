@@ -7,6 +7,8 @@ import subprocess
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 
+from dvdcompress.layer_break import calculate_dvd9_layer_break
+
 
 class OpticalDrive(BaseModel):
     device_path: str
@@ -70,6 +72,7 @@ def build_burn_command(
     iso_path: str,
     speed: int = 4,
     is_bluray: bool = False,
+    layer_break_sector: Optional[int] = None,
 ) -> List[str]:
     """Generate command line arguments for growisofs (DVD) or cdrskin (Blu-ray)."""
     if is_bluray:
@@ -83,13 +86,24 @@ def build_burn_command(
             iso_path,
         ]
     else:
-        return [
+        # Auto-calculate DVD-9 layer break if not explicitly provided
+        lb = layer_break_sector
+        if lb is None and os.path.exists(iso_path):
+            lb = calculate_dvd9_layer_break(iso_path)
+
+        cmd = [
             "growisofs",
             "-dvd-compat",
             f"-speed={speed}",
+        ]
+        if lb is not None:
+            cmd.append(f"-use-the-force-luke=break:{lb}")
+
+        cmd.extend([
             "-Z",
             f"{device_path}={iso_path}",
-        ]
+        ])
+        return cmd
 
 
 def parse_burn_progress_line(line: str) -> Dict[str, Any]:

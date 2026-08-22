@@ -39,6 +39,12 @@ from dvdcompress.burner import (
     parse_burn_progress_line,
     parse_lsscsi_output,
 )
+from dvdcompress.layer_break import (
+    calculate_dvd9_layer_break,
+    calculate_dvd9_layer_break_from_dir,
+    extract_vts_info_from_iso,
+    parse_vts_ifo_cell_offsets,
+)
 from dvdcompress.system_info import get_hardware_telemetry
 from dvdcompress.job_manager import JobStage, Job, JobManager
 
@@ -73,6 +79,10 @@ __all__ = [
     "build_burn_command",
     "parse_burn_progress_line",
     "parse_lsscsi_output",
+    "calculate_dvd9_layer_break",
+    "calculate_dvd9_layer_break_from_dir",
+    "extract_vts_info_from_iso",
+    "parse_vts_ifo_cell_offsets",
     "get_hardware_telemetry",
     "JobStage",
     "Job",
@@ -80,4 +90,4 @@ __all__ = [
     "__version__",
 ]
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"

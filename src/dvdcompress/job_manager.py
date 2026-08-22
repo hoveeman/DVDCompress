@@ -19,6 +19,7 @@ from dvdcompress.authoring import (
     generate_tsmuxer_meta,
 )
 from dvdcompress.burner import build_burn_command, parse_burn_progress_line
+from dvdcompress.layer_break import calculate_dvd9_layer_break
 from dvdcompress.calculator import calculate_bitrate_budget
 from dvdcompress.config import settings
 from dvdcompress.iso import (
@@ -962,8 +963,22 @@ class JobManager:
 
                 job.stage = JobStage.BURNING
                 self.log(job_id, f"Burning ISO to {job.burner_device} at {job.burn_speed}x...")
+                layer_break = None
+                if not is_bluray and os.path.exists(iso_path):
+                    layer_break = calculate_dvd9_layer_break(iso_path)
+                    if layer_break is not None:
+                        self.log(
+                            job_id,
+                            f"DVD-9 (Dual-Layer) detected: calculated seamless layer break at sector {layer_break:,}",
+                        )
                 await self.broadcast(job_id)
-                burn_cmd = build_burn_command(job.burner_device, iso_path, speed=job.burn_speed, is_bluray=is_bluray)
+                burn_cmd = build_burn_command(
+                    job.burner_device,
+                    iso_path,
+                    speed=job.burn_speed,
+                    is_bluray=is_bluray,
+                    layer_break_sector=layer_break,
+                )
                 proc = await asyncio.create_subprocess_exec(
                     *burn_cmd,
                     stdout=asyncio.subprocess.PIPE,

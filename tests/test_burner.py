@@ -52,6 +52,36 @@ def test_build_dvd_burn_command():
     assert "/dev/sr0=/output/disc.iso" in cmd_str
 
 
+def test_build_dvd9_burn_command_with_explicit_layer_break():
+    cmd = build_burn_command(
+        "/dev/sr0",
+        "/output/disc.iso",
+        speed=4,
+        is_bluray=False,
+        layer_break_sector=1355104,
+    )
+    cmd_str = " ".join(cmd)
+    assert "growisofs" in cmd_str
+    assert "-use-the-force-luke=break:1355104" in cmd_str
+    assert "/dev/sr0=/output/disc.iso" in cmd_str
+
+
+def test_build_dvd9_burn_command_with_auto_layer_break():
+    with patch("dvdcompress.burner.calculate_dvd9_layer_break", return_value=1355104):
+        with patch("os.path.exists", return_value=True):
+            cmd = build_burn_command("/dev/sr0", "/output/dvd9.iso", speed=4, is_bluray=False)
+            cmd_str = " ".join(cmd)
+            assert "-use-the-force-luke=break:1355104" in cmd_str
+
+
+def test_build_dvd5_burn_command_omits_layer_break():
+    with patch("dvdcompress.burner.calculate_dvd9_layer_break", return_value=None):
+        with patch("os.path.exists", return_value=True):
+            cmd = build_burn_command("/dev/sr0", "/output/dvd5.iso", speed=4, is_bluray=False)
+            cmd_str = " ".join(cmd)
+            assert "-use-the-force-luke" not in cmd_str
+
+
 def test_build_bluray_burn_command():
     cmd = build_burn_command("/dev/sr0", "/output/disc.iso", speed=2, is_bluray=True)
     cmd_str = " ".join(cmd)

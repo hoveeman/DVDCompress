@@ -16,6 +16,7 @@ from dvdcompress.burner import (
     parse_burn_progress_line,
     scan_optical_drives,
 )
+from dvdcompress.layer_break import calculate_dvd9_layer_break
 from dvdcompress.calculator import calculate_bitrate_budget
 from dvdcompress.config import AppSettings, load_app_settings, save_app_settings, settings
 from dvdcompress.job_manager import ACTIVE_STAGES, Job, JobManager, JobStage
@@ -33,7 +34,7 @@ from dvdcompress.models import (
 from dvdcompress.probe import analyze_video_complexity, probe_media_file
 from dvdcompress.system_info import get_hardware_telemetry
 
-app = FastAPI(title="DVDCompress API", version="1.0.4")
+app = FastAPI(title="DVDCompress API", version="1.0.5")
 job_manager = JobManager()
 
 # Load persisted settings and jobs on startup
@@ -170,13 +171,25 @@ async def _run_burn_iso_pipeline(
     job_manager.log(
         job_id, f"Burning ISO {iso_path} to {device_path} at {speed}x..."
     )
+    layer_break = None
+    if not is_bluray and os.path.exists(iso_path):
+        layer_break = calculate_dvd9_layer_break(iso_path)
+        if layer_break is not None:
+            job_manager.log(
+                job_id,
+                f"DVD-9 (Dual-Layer) detected: calculated seamless layer break at sector {layer_break:,}",
+            )
     await job_manager.broadcast(job_id)
 
     current_process: Optional[asyncio.subprocess.Process] = None
 
     try:
         burn_cmd = build_burn_command(
-            device_path, iso_path, speed=speed, is_bluray=is_bluray
+            device_path,
+            iso_path,
+            speed=speed,
+            is_bluray=is_bluray,
+            layer_break_sector=layer_break,
         )
         proc = await asyncio.create_subprocess_exec(
             *burn_cmd,
