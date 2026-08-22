@@ -149,19 +149,12 @@ def extract_vts_info_from_iso(iso_path: str) -> Tuple[Optional[int], Optional[by
         return None, None
 
 
-def calculate_dvd9_layer_break(iso_path: str) -> Optional[int]:
+def get_dvd9_layer_break_info(iso_path: str) -> Optional[Dict[str, Any]]:
     """
-    Calculate the optimal 16-sector ECC-aligned chapter layer break for DVD-9 (Dual-Layer) ISOs.
-
-    Rules:
-    1. Returns None for DVD-5 (<= 4.7 GB) images.
-    2. Enforces L0 >= L1 (Layer 0 must hold at least half the total sectors).
-    3. Respects DVD+R DL Layer 0 maximum physical sector limit (2,084,960).
-    4. Searches IFO Cell Address Table for the first chapter starting sector within [Total/2 .. 2084960].
-    5. Guarantees 16-sector (32 KB) ECC block alignment.
+    Retrieve detailed metadata about the DVD-9 layer break.
 
     Returns:
-        Absolute layer break sector number for growisofs (-use-the-force-luke=break:N), or None.
+        Dict with keys 'sector', 'chapter_index', 'mb', 'percent', 'is_fallback', or None if DVD-5.
     """
     if not os.path.exists(iso_path):
         return None
@@ -169,30 +162,48 @@ def calculate_dvd9_layer_break(iso_path: str) -> Optional[int]:
     total_bytes = os.path.getsize(iso_path)
     total_sectors = total_bytes // DVD_SECTOR_SIZE
 
-    # Single-layer DVD-5 discs do not require a layer break
     if total_sectors <= DVD5_MAX_SECTORS:
         return None
 
-    # Calculate physical layer break bounds
     half_sectors = math.ceil(total_sectors / 2.0)
-    # Align minimum Layer 0 to 16-sector ECC boundary
     min_l0_sector = int(math.ceil(half_sectors / ECC_BLOCK_SECTORS)) * ECC_BLOCK_SECTORS
     max_l0_sector = DVD9_MAX_L0_SECTORS
 
-    # Try to extract chapter cell offsets from ISO
     vob_lba, ifo_bytes = extract_vts_info_from_iso(iso_path)
 
     if vob_lba is not None and ifo_bytes is not None:
         cell_offsets = parse_vts_ifo_cell_offsets(ifo_bytes)
-        for offset in cell_offsets:
+        for idx, offset in enumerate(cell_offsets):
             abs_sec = vob_lba + offset
-            # ECC 16-sector align if needed
             ecc_aligned_sec = (abs_sec // ECC_BLOCK_SECTORS) * ECC_BLOCK_SECTORS
             if min_l0_sector <= ecc_aligned_sec <= max_l0_sector:
-                return ecc_aligned_sec
+                return {
+                    "sector": ecc_aligned_sec,
+                    "chapter_index": idx + 1,
+                    "mb": round((ecc_aligned_sec * DVD_SECTOR_SIZE) / (1000 * 1000), 1),
+                    "percent": round((ecc_aligned_sec / total_sectors) * 100.0, 1),
+                    "is_fallback": False,
+                }
 
     # Fallback to ECC-aligned midpoint if no valid chapter is found
-    return min_l0_sector
+    return {
+        "sector": min_l0_sector,
+        "chapter_index": None,
+        "mb": round((min_l0_sector * DVD_SECTOR_SIZE) / (1000 * 1000), 1),
+        "percent": round((min_l0_sector / total_sectors) * 100.0, 1),
+        "is_fallback": True,
+    }
+
+
+def calculate_dvd9_layer_break(iso_path: str) -> Optional[int]:
+    """
+    Calculate the optimal 16-sector ECC-aligned chapter layer break for DVD-9 (Dual-Layer) ISOs.
+
+    Returns:
+        Absolute layer break sector number for growisofs (-use-the-force-luke=break:N), or None.
+    """
+    info = get_dvd9_layer_break_info(iso_path)
+    return info["sector"] if info else None
 
 
 def calculate_dvd9_layer_break_from_dir(author_dir: str, total_sectors: int) -> Optional[int]:

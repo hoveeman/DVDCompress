@@ -9,6 +9,7 @@ from dvdcompress.layer_break import (
     extract_vts_info_from_iso,
     calculate_dvd9_layer_break,
     calculate_dvd9_layer_break_from_dir,
+    get_dvd9_layer_break_info,
     DVD9_MAX_L0_SECTORS,
     DVD5_MAX_SECTORS,
 )
@@ -235,3 +236,35 @@ def test_calculate_dvd9_layer_break_from_dir():
         assert break_sector is not None
         assert break_sector == 1355008
         assert break_sector % 16 == 0
+
+
+def test_get_dvd9_layer_break_info():
+    """Verify get_dvd9_layer_break_info returns complete metadata."""
+    total_size = 5461936128
+    cell_offsets = [0, 500000, 1354800]
+    ifo_bytes = create_synthetic_vts_ifo(cell_offsets)
+    vob_lba = 304
+
+    iso_bytes = create_synthetic_iso9660_dvd(
+        total_size_bytes=total_size,
+        vts_vob_lba=vob_lba,
+        ifo_bytes=ifo_bytes,
+    )
+
+    with tempfile.NamedTemporaryFile(suffix=".iso", delete=False) as f:
+        f.write(iso_bytes)
+        f.seek(total_size - 1)
+        f.write(b"\0")
+        iso_path = f.name
+
+    try:
+        info = get_dvd9_layer_break_info(iso_path)
+        assert info is not None
+        assert info["sector"] == 1355104
+        assert info["chapter_index"] == 3
+        assert info["mb"] > 2700.0
+        assert 50.0 <= info["percent"] <= 51.0
+        assert info["is_fallback"] is False
+    finally:
+        if os.path.exists(iso_path):
+            os.remove(iso_path)

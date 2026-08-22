@@ -43,6 +43,7 @@ from dvdcompress.layer_break import (
     calculate_dvd9_layer_break,
     calculate_dvd9_layer_break_from_dir,
     extract_vts_info_from_iso,
+    get_dvd9_layer_break_info,
     parse_vts_ifo_cell_offsets,
 )
 from dvdcompress.system_info import get_hardware_telemetry
@@ -82,6 +83,7 @@ __all__ = [
     "calculate_dvd9_layer_break",
     "calculate_dvd9_layer_break_from_dir",
     "extract_vts_info_from_iso",
+    "get_dvd9_layer_break_info",
     "parse_vts_ifo_cell_offsets",
     "get_hardware_telemetry",
     "JobStage",

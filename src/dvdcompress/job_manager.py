@@ -19,7 +19,10 @@ from dvdcompress.authoring import (
     generate_tsmuxer_meta,
 )
 from dvdcompress.burner import build_burn_command, parse_burn_progress_line
-from dvdcompress.layer_break import calculate_dvd9_layer_break
+from dvdcompress.layer_break import (
+    calculate_dvd9_layer_break,
+    get_dvd9_layer_break_info,
+)
 from dvdcompress.calculator import calculate_bitrate_budget
 from dvdcompress.config import settings
 from dvdcompress.iso import (
@@ -963,21 +966,28 @@ class JobManager:
 
                 job.stage = JobStage.BURNING
                 self.log(job_id, f"Burning ISO to {job.burner_device} at {job.burn_speed}x...")
-                layer_break = None
-                if not is_bluray and os.path.exists(iso_path):
-                    layer_break = calculate_dvd9_layer_break(iso_path)
-                    if layer_break is not None:
-                        self.log(
-                            job_id,
-                            f"DVD-9 (Dual-Layer) detected: calculated seamless layer break at sector {layer_break:,}",
-                        )
+                lb_info = (
+                    get_dvd9_layer_break_info(iso_path)
+                    if (not is_bluray and os.path.exists(iso_path))
+                    else None
+                )
+                if lb_info:
+                    chap_str = (
+                        f" (Chapter {lb_info['chapter_index']})"
+                        if lb_info.get("chapter_index")
+                        else " (Midpoint fallback)"
+                    )
+                    self.log(
+                        job_id,
+                        f"DVD-9 (Dual-Layer) detected: target layer break at sector {lb_info['sector']:,} ({lb_info['mb']:,.1f} MB / {lb_info['percent']:.1f}% of disc{chap_str})",
+                    )
                 await self.broadcast(job_id)
                 burn_cmd = build_burn_command(
                     job.burner_device,
                     iso_path,
                     speed=job.burn_speed,
                     is_bluray=is_bluray,
-                    layer_break_sector=layer_break,
+                    layer_break_sector=lb_info["sector"] if lb_info else None,
                 )
                 proc = await asyncio.create_subprocess_exec(
                     *burn_cmd,
@@ -986,6 +996,7 @@ class JobManager:
                 )
                 current_process = proc
                 self.active_processes[job_id] = proc
+                lb_transition_notified = False
                 while True:
                     line = await proc.stdout.readline()
                     if not line:
@@ -994,6 +1005,18 @@ class JobManager:
                     if decoded:
                         self.log(job_id, decoded)
                     prog = parse_burn_progress_line(decoded)
+                    if lb_info and not lb_transition_notified and "written_bytes" in prog:
+                        if prog["written_bytes"] >= lb_info["sector"] * 2048:
+                            lb_transition_notified = True
+                            chap_str = (
+                                f" (Chapter {lb_info['chapter_index']})"
+                                if lb_info.get("chapter_index")
+                                else ""
+                            )
+                            self.log(
+                                job_id,
+                                f"⚡ Layer break reached: Refocusing optical laser to Layer 1 at sector {lb_info['sector']:,} ({lb_info['percent']:.1f}%{chap_str})...",
+                            )
                     if "percent" in prog:
                         job.stage_percent = prog["percent"]
                         job.progress_percent = 85.0 + (prog["percent"] * 0.15)

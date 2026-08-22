@@ -94,6 +94,8 @@ def test_build_bluray_burn_command():
 def test_parse_growisofs_progress():
     line = " 143523840/4699979776 ( 3.1%) @3.9x, remaining 14:12 RBU 100.0% UBU   4.2%"
     prog = parse_burn_progress_line(line)
+    assert prog["written_bytes"] == 143523840
+    assert prog["total_bytes"] == 4699979776
     assert prog["percent"] == 3.1
     assert prog["speed"] == "3.9x"
     assert prog["remaining"] == "14:12"

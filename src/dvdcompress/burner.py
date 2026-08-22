@@ -107,9 +107,22 @@ def build_burn_command(
 
 
 def parse_burn_progress_line(line: str) -> Dict[str, Any]:
-    """Parse real-time progress, speed, and time remaining from growisofs / cdrskin output."""
+    """Parse real-time progress, speed, written bytes, and time remaining from growisofs / cdrskin output."""
     res = {}
-    # Match growisofs percentage: " ( 3.1%) @3.9x, remaining 14:12"
+    # Match growisofs with byte count: " 2731048960/5461936128 ( 50.0%) @4.0x, remaining 9:06"
+    m_bytes = re.search(
+        r"(\d+)/(\d+)\s*\(\s*([\d\.]+)%\)\s*@([\d\.]+)x.*?remaining\s*([\d:]+)",
+        line,
+    )
+    if m_bytes:
+        res["written_bytes"] = int(m_bytes.group(1))
+        res["total_bytes"] = int(m_bytes.group(2))
+        res["percent"] = float(m_bytes.group(3))
+        res["speed"] = f"{m_bytes.group(4)}x"
+        res["remaining"] = m_bytes.group(5)
+        return res
+
+    # Match growisofs percentage-only: " ( 3.1%) @3.9x, remaining 14:12"
     m = re.search(r"\(\s*([\d\.]+)%\)\s*@([\d\.]+)x.*?remaining\s*([\d:]+)", line)
     if m:
         res["percent"] = float(m.group(1))
@@ -122,6 +135,8 @@ def parse_burn_progress_line(line: str) -> Dict[str, Any]:
     if m2:
         written = float(m2.group(1))
         total = float(m2.group(2))
+        res["written_bytes"] = int(written * 1024 * 1024)
+        res["total_bytes"] = int(total * 1024 * 1024)
         res["percent"] = round((written / total) * 100.0, 1) if total > 0 else 0.0
 
     return res
