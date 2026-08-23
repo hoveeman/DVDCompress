@@ -1966,6 +1966,21 @@
     }
   }
 
+  async function loadAppVersion() {
+    try {
+      const res = await fetch('/api/version');
+      if (res.ok) {
+        const data = await res.json();
+        const verEl = document.getElementById('app-version');
+        if (verEl && data.version) {
+          verEl.textContent = 'v' + data.version;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch app version:', e);
+    }
+  }
+
   // App Initialization
   function initApp() {
     initNavTabs();
@@ -1975,6 +1990,7 @@
     initSlotsControl();
 
     // Initial Data Fetching
+    loadAppVersion();
     loadSettings();
     loadBrowserPath('/media');
     loadDrives();

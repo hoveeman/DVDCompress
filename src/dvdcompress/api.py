@@ -35,10 +35,11 @@ from dvdcompress.models import (
     OutputMode,
     TVStandard,
 )
+from dvdcompress import __version__
 from dvdcompress.probe import analyze_video_complexity, probe_media_file
 from dvdcompress.system_info import get_hardware_telemetry
 
-app = FastAPI(title="DVDCompress API", version="1.0.5")
+app = FastAPI(title="DVDCompress API", version=__version__)
 job_manager = JobManager()
 
 # Load persisted settings and jobs on startup
@@ -385,6 +386,11 @@ async def analyze_complexity_endpoint(req: ComplexityAnalysisRequest):
 @app.get("/api/drives", response_model=List[OpticalDrive])
 def list_drives():
     return scan_optical_drives()
+
+
+@app.get("/api/version")
+def get_version():
+    return {"version": __version__}
 
 
 @app.get("/api/system")

@@ -30,6 +30,12 @@ def test_api_health():
     assert res.json()["app"] == "DVDCompress"
 
 
+def test_api_version():
+    res = client.get("/api/version")
+    assert res.status_code == 200
+    assert res.json()["version"] == "1.0.6"
+
+
 def test_api_files_nonexistent_and_permission_error():
     res = client.get("/api/files?path=/nonexistent/path/xyz")
     assert res.status_code == 200
