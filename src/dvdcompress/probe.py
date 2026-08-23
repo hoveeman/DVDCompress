@@ -181,7 +181,13 @@ async def sample_snippet_bitrate(
             final_w, final_h = 720, 576
             sar_val = "64/45" if is_16_9 else "16/15"
 
-        vf = f"scale={final_w}:{final_h},setsar={sar_val},format=yuv420p"
+        dar_str = "16/9" if is_16_9 else "4/3"
+        scale_expr = (
+            f"scale=w='if(gte(dar,{dar_str}),{final_w},max(2,min({final_w},trunc({final_w}*dar/({dar_str})/2)*2)))':"
+            f"h='if(gte(dar,{dar_str}),max(2,min({final_h},trunc({final_h}*({dar_str})/dar/2)*2)),{final_h})'"
+        )
+        pad_expr = f"pad={final_w}:{final_h}:(ow-iw)/2:(oh-ih)/2"
+        vf = f"{scale_expr},{pad_expr},setsar={sar_val},format=yuv420p"
         cmd = [
             "ffmpeg",
             "-y",
@@ -233,7 +239,7 @@ async def sample_snippet_bitrate(
             "-bufsize",
             "30000k",
             "-vf",
-            "scale=1920:1080,format=yuv420p",
+            "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
             "-f",
             "rawvideo",
             "/dev/null",

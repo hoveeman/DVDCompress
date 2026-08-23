@@ -374,8 +374,22 @@ def convert_pgs_to_spumux_xml(
 
             src_w = max(1, item.canvas_width)
             src_h = max(1, item.canvas_height)
-            scale_x = target_w / float(src_w)
-            scale_y = target_h / float(src_h)
+            src_dar = src_w / float(src_h)
+            target_dar = 16.0 / 9.0 if aspect_ratio == AspectRatio.RATIO_16_9 else 4.0 / 3.0
+
+            if src_dar >= target_dar - 0.01:
+                active_w = target_w
+                active_h = min(target_h, max(2, int(round(target_h * (target_dar / src_dar))) & ~1))
+                offset_x = 0
+                offset_y = max(0, (target_h - active_h) // 2)
+            else:
+                active_w = min(target_w, max(2, int(round(target_w * (src_dar / target_dar))) & ~1))
+                active_h = target_h
+                offset_x = max(0, (target_w - active_w) // 2)
+                offset_y = 0
+
+            scale_x = active_w / float(src_w)
+            scale_y = active_h / float(src_h)
 
             # If there are multiple objects in the display set, combine them into a composite image
             if len(item.objects) == 1:
@@ -386,8 +400,8 @@ def convert_pgs_to_spumux_xml(
 
                 scaled_w = max(2, int(round(ow * scale_x)))
                 scaled_h = max(2, int(round(oh * scale_y)))
-                scaled_x = max(0, min(target_w - scaled_w, int(round(obj.x * scale_x))))
-                scaled_y = max(0, min(target_h - scaled_h, int(round(obj.y * scale_y))))
+                scaled_x = max(0, min(target_w - scaled_w, offset_x + int(round(obj.x * scale_x))))
+                scaled_y = max(0, min(target_h - scaled_h, offset_y + int(round(obj.y * scale_y))))
 
                 # Force even coordinates and dimensions for DVD MPEG-2 interlaced subpicture chroma alignment
                 scaled_x &= ~1
@@ -420,8 +434,8 @@ def convert_pgs_to_spumux_xml(
 
                 scaled_w = max(2, int(round(comp_src_w * scale_x)))
                 scaled_h = max(2, int(round(comp_src_h * scale_y)))
-                scaled_x = max(0, min(target_w - scaled_w, int(round(min_src_x * scale_x))))
-                scaled_y = max(0, min(target_h - scaled_h, int(round(min_src_y * scale_y))))
+                scaled_x = max(0, min(target_w - scaled_w, offset_x + int(round(min_src_x * scale_x))))
+                scaled_y = max(0, min(target_h - scaled_h, offset_y + int(round(min_src_y * scale_y))))
 
                 scaled_x &= ~1
                 scaled_y &= ~1

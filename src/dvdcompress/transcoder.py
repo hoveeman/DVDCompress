@@ -65,10 +65,17 @@ def build_dvd_transcode_command(
         final_w, final_h = 720, 576
         sar_val, dar_val = ("64/45", "16/9") if is_16_9 else ("16/15", "4/3")
 
+    dar_str = "16/9" if is_16_9 else "4/3"
+    scale_expr = (
+        f"scale=w='if(gte(dar,{dar_str}),{final_w},max(2,min({final_w},trunc({final_w}*dar/({dar_str})/2)*2)))':"
+        f"h='if(gte(dar,{dar_str}),max(2,min({final_h},trunc({final_h}*({dar_str})/dar/2)*2)),{final_h})'"
+    )
+    pad_expr = f"pad={final_w}:{final_h}:(ow-iw)/2:(oh-ih)/2"
+
     if is_hdr:
-        vf_filter = f"scale={final_w}:{final_h}:in_color_matrix=bt2020nc:out_color_matrix=bt601,setsar={sar_val},setdar={dar_val},format=yuv420p"
+        vf_filter = f"{scale_expr}:in_color_matrix=bt2020nc:out_color_matrix=bt601,{pad_expr},setsar={sar_val},setdar={dar_val},format=yuv420p"
     else:
-        vf_filter = f"scale={final_w}:{final_h},setsar={sar_val},setdar={dar_val},format=yuv420p"
+        vf_filter = f"{scale_expr},{pad_expr},setsar={sar_val},setdar={dar_val},format=yuv420p"
 
     # High quality MPEG-2 video encoding
     cmd.extend(["-target", target])

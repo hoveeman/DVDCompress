@@ -294,3 +294,57 @@ def test_convert_pgs_to_spumux_xml_with_pts_offset(tmp_path):
     # 3815 - 3813 = 2.0s, 3820 - 3813 = 7.0s
     assert 'start="00:00:02.000"' in content
     assert 'end="00:00:07.000"' in content
+
+
+def test_convert_pgs_to_spumux_xml_cropped_canvas(tmp_path):
+    """Verify that a cropped scope PGS canvas (e.g. 1920x798) is mapped into the letterboxed active video area."""
+    sup_path = str(tmp_path / "scope_canvas.sup")
+    out_dir = str(tmp_path / "scope_out")
+
+    pds_payload = bytearray([0x00, 0x00, 0, 0, 128, 128, 0, 1, 235, 128, 128, 255])
+    rle_data = bytearray([0x00, 0x80 | 20, 0x01, 0x00, 0x00])
+    w, h = 20, 1
+    ods_payload = bytearray([0x00, 0x01, 0x00, 0xC0, 0x00, len(rle_data) + 4 >> 8, len(rle_data) + 4 & 0xFF, (w >> 8) & 0xFF, w & 0xFF, (h >> 8) & 0xFF, h & 0xFF])
+    ods_payload.extend(rle_data)
+
+    # PCS with 1920x798 (0x0780 x 0x031E) canvas, obj at (100, 700)
+    pcs_start = bytearray([
+        0x07, 0x80,  # 1920
+        0x03, 0x1E,  # 798
+        0x10, 0x00, 0x01, 0x80, 0x00, 0x00, 0x01,
+        0x00, 0x01, 0x00, 0x00,
+        0x00, 0x64,  # X = 100
+        0x02, 0xBC,  # Y = 700
+    ])
+    pcs_clear = bytearray([0x07, 0x80, 0x03, 0x1E, 0x10, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00])
+
+    sup_bytes = (
+        _build_pgs_packet(90000, 0, 0x16, pcs_start)
+        + _build_pgs_packet(90000, 0, 0x14, pds_payload)
+        + _build_pgs_packet(90000, 0, 0x15, ods_payload)
+        + _build_pgs_packet(90000, 0, 0x80, b"")
+        + _build_pgs_packet(270000, 0, 0x16, pcs_clear)
+        + _build_pgs_packet(270000, 0, 0x80, b"")
+    )
+    with open(sup_path, "wb") as f:
+        f.write(sup_bytes)
+
+    xml_path = convert_pgs_to_spumux_xml(
+        sup_path=sup_path,
+        output_dir=out_dir,
+        prefix="scope_test",
+        tv_standard=TVStandard.NTSC,
+        aspect_ratio=AspectRatio.RATIO_16_9,
+    )
+    assert xml_path is not None
+    with open(xml_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # Active height is ~354 with vertical offset of ~63.
+    # Scaled Y should include the offset, so yoffset >= 60.
+    assert 'yoffset="' in content
+    import re
+    m = re.search(r'yoffset="(\d+)"', content)
+    assert m is not None
+    y_off = int(m.group(1))
+    assert y_off >= 60

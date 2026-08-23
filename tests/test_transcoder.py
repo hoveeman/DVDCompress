@@ -26,7 +26,9 @@ def test_dvd_ntsc_command_structure():
     assert "-ar 48000" in cmd_str
     assert "-ac 6" in cmd_str
     assert "-b:a 384k" in cmd_str
-    assert "scale=720:480" in cmd_str
+    assert "pad=720:480" in cmd_str
+    assert "setsar=32/27" in cmd_str
+    assert "setdar=16/9" in cmd_str
     assert cmd[-1] == "/tmp/output.mpg"
 
 def test_dvd_gpu_decode_flag():
@@ -43,7 +45,9 @@ def test_dvd_gpu_decode_flag():
     cmd_str = " ".join(cmd)
     assert "-hwaccel cuda" in cmd_str
     assert "-target pal-dvd" in cmd_str
-    assert "scale=720:576" in cmd_str
+    assert "pad=720:576" in cmd_str
+    assert "setsar=64/45" in cmd_str
+    assert "setdar=16/9" in cmd_str
     assert "-ac 2" in cmd_str
     assert "-b:a 192k" in cmd_str
 
@@ -60,7 +64,9 @@ def test_dvd_auto_standard_and_4_3_aspect():
     )
     cmd_str = " ".join(cmd)
     assert "-target ntsc-dvd" in cmd_str
-    assert "scale=720:480" in cmd_str
+    assert "pad=720:480" in cmd_str
+    assert "setsar=8/9" in cmd_str
+    assert "setdar=4/3" in cmd_str
     assert "-aspect 4:3" in cmd_str
     assert "-map 0:2" in cmd_str
 
@@ -240,6 +246,53 @@ def test_dvd_transcode_maps_only_video_and_audio():
     assert "-map 0:1" in cmd_str
     assert "-map 0:2" not in cmd_str
     assert "-map 0:s" not in cmd_str
+
+
+def test_dvd_aspect_ratio_filter_letterbox_and_pillarbox():
+    """Verify DVD transcode video filter expressions for widescreen anamorphic and standard DAR."""
+    # 1. NTSC 16:9 widescreen
+    cmd_ntsc_16_9 = build_dvd_transcode_command(
+        input_file="/media/scope_movie.mkv",
+        output_mpg="/output/scope.mpg",
+        video_bitrate_kbps=5000,
+        tv_standard=TVStandard.NTSC,
+        aspect_ratio=AspectRatio.RATIO_16_9,
+    )
+    vf_ntsc_16_9 = cmd_ntsc_16_9[cmd_ntsc_16_9.index("-vf") + 1]
+    assert "scale=w='if(gte(dar,16/9),720,max(2,min(720,trunc(720*dar/(16/9)/2)*2)))'" in vf_ntsc_16_9
+    assert "h='if(gte(dar,16/9),max(2,min(480,trunc(480*(16/9)/dar/2)*2)),480)'" in vf_ntsc_16_9
+    assert "pad=720:480:(ow-iw)/2:(oh-ih)/2" in vf_ntsc_16_9
+    assert "setsar=32/27" in vf_ntsc_16_9
+    assert "setdar=16/9" in vf_ntsc_16_9
+
+    # 2. PAL 16:9 widescreen
+    cmd_pal_16_9 = build_dvd_transcode_command(
+        input_file="/media/scope_movie.mkv",
+        output_mpg="/output/scope_pal.mpg",
+        video_bitrate_kbps=5000,
+        tv_standard=TVStandard.PAL,
+        aspect_ratio=AspectRatio.RATIO_16_9,
+    )
+    vf_pal_16_9 = cmd_pal_16_9[cmd_pal_16_9.index("-vf") + 1]
+    assert "scale=w='if(gte(dar,16/9),720,max(2,min(720,trunc(720*dar/(16/9)/2)*2)))'" in vf_pal_16_9
+    assert "h='if(gte(dar,16/9),max(2,min(576,trunc(576*(16/9)/dar/2)*2)),576)'" in vf_pal_16_9
+    assert "pad=720:576:(ow-iw)/2:(oh-ih)/2" in vf_pal_16_9
+    assert "setsar=64/45" in vf_pal_16_9
+
+    # 3. NTSC 4:3 fullscreen
+    cmd_ntsc_4_3 = build_dvd_transcode_command(
+        input_file="/media/tv_show.mkv",
+        output_mpg="/output/tv.mpg",
+        video_bitrate_kbps=5000,
+        tv_standard=TVStandard.NTSC,
+        aspect_ratio=AspectRatio.RATIO_4_3,
+    )
+    vf_ntsc_4_3 = cmd_ntsc_4_3[cmd_ntsc_4_3.index("-vf") + 1]
+    assert "scale=w='if(gte(dar,4/3),720,max(2,min(720,trunc(720*dar/(4/3)/2)*2)))'" in vf_ntsc_4_3
+    assert "h='if(gte(dar,4/3),max(2,min(480,trunc(480*(4/3)/dar/2)*2)),480)'" in vf_ntsc_4_3
+    assert "pad=720:480:(ow-iw)/2:(oh-ih)/2" in vf_ntsc_4_3
+    assert "setsar=8/9" in vf_ntsc_4_3
+    assert "setdar=4/3" in vf_ntsc_4_3
 
 
 
