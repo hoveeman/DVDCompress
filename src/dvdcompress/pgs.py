@@ -259,6 +259,7 @@ def convert_pgs_to_spumux_xml(
     aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9,
     pts_offset: float = 0.0,
     max_duration_sec: Optional[float] = None,
+    preview_label: Optional[str] = None,
 ) -> Optional[str]:
     """Convert a Blu-ray PGS .sup subtitle stream to scaled DVD subpicture PNGs and spumux XML.
 
@@ -268,14 +269,15 @@ def convert_pgs_to_spumux_xml(
         prefix: Filename prefix for generated PNG images.
         tv_standard: NTSC (720x480) or PAL (720x576).
         aspect_ratio: 16:9 widescreen or 4:3.
-        pts_offset: Timestamp offset in seconds to subtract (used for preview seek normalization).
+        pts_offset: Timestamp offset in seconds to subtract (used if timestamps require adjustment).
         max_duration_sec: Maximum duration in seconds for filtering preview events.
+        preview_label: Label to display on fallback preview subtitle.
 
     Returns:
         Path to the generated spumux XML file, or None if no subtitles were found.
     """
     items = parse_pgs_sup(sup_path)
-    if not items:
+    if not items and max_duration_sec is None:
         return None
 
     is_ntsc = tv_standard in (TVStandard.NTSC, TVStandard.AUTO)
@@ -287,108 +289,127 @@ def convert_pgs_to_spumux_xml(
     spu_lines = [f'<subpictures format="{fmt_str}">', '  <stream>']
 
     valid_spu_count = 0
-    for idx, item in enumerate(items):
-        if not item.objects:
-            continue
-
-        # Adjust start and end times by pts_offset (vital for preview clips and stream alignment)
-        start_s = item.start_pts - pts_offset
-        end_s = item.end_pts - pts_offset
-
-        if max_duration_sec is not None:
-            if end_s <= 0.0 or start_s >= max_duration_sec:
-                continue
-            start_s = max(0.0, start_s)
-            end_s = min(max_duration_sec, end_s)
-        else:
-            if end_s <= 0.0:
-                continue
-            start_s = max(0.0, start_s)
-
-        end_s = max(start_s + 0.5, end_s)
-
-        src_w = max(1, item.canvas_width)
-        src_h = max(1, item.canvas_height)
-        scale_x = target_w / float(src_w)
-        scale_y = target_h / float(src_h)
-
-        # If there are multiple objects in the display set, combine them into a composite image
-        if len(item.objects) == 1:
-            obj = item.objects[0]
-            ow, oh = obj.width, obj.height
-            if ow <= 0 or oh <= 0:
+    if items:
+        for idx, item in enumerate(items):
+            if not item.objects:
                 continue
 
-            scaled_w = max(2, int(round(ow * scale_x)))
-            scaled_h = max(2, int(round(oh * scale_y)))
-            scaled_x = max(0, min(target_w - scaled_w, int(round(obj.x * scale_x))))
-            scaled_y = max(0, min(target_h - scaled_h, int(round(obj.y * scale_y))))
+            # Adjust start and end times by pts_offset if applicable
+            start_s = item.start_pts - pts_offset
+            end_s = item.end_pts - pts_offset
 
-            # Force even coordinates and dimensions for DVD MPEG-2 interlaced subpicture chroma alignment
-            scaled_x &= ~1
-            scaled_y &= ~1
-            scaled_w = max(2, (scaled_w + 1) & ~1)
-            scaled_h = max(2, (scaled_h + 1) & ~1)
-            if scaled_x + scaled_w > target_w:
-                scaled_w = target_w - scaled_x
-            if scaled_y + scaled_h > target_h:
-                scaled_h = target_h - scaled_y
+            if max_duration_sec is not None:
+                if end_s <= 0.0 or start_s >= max_duration_sec:
+                    continue
+                start_s = max(0.0, start_s)
+                end_s = min(max_duration_sec, end_s)
+            else:
+                if end_s <= 0.0:
+                    continue
+                start_s = max(0.0, start_s)
 
-            resized_img = obj.image.resize((scaled_w, scaled_h), Image.Resampling.BILINEAR)
-            png_filename = f"{prefix}_{idx:04d}.png"
-            png_path = os.path.join(output_dir, png_filename)
-            resized_img.save(png_path, "PNG")
+            end_s = max(start_s + 0.5, end_s)
 
-        else:
-            # Multi-object display set: compute bounding box in source canvas
-            min_src_x = min(o.x for o in item.objects)
-            min_src_y = min(o.y for o in item.objects)
-            max_src_x = max(o.x + o.width for o in item.objects)
-            max_src_y = max(o.y + o.height for o in item.objects)
-            comp_src_w = max(1, max_src_x - min_src_x)
-            comp_src_h = max(1, max_src_y - min_src_y)
+            src_w = max(1, item.canvas_width)
+            src_h = max(1, item.canvas_height)
+            scale_x = target_w / float(src_w)
+            scale_y = target_h / float(src_h)
 
-            composite_src = Image.new("RGBA", (comp_src_w, comp_src_h), (0, 0, 0, 0))
-            for o in item.objects:
-                composite_src.paste(o.image, (o.x - min_src_x, o.y - min_src_y), o.image)
+            # If there are multiple objects in the display set, combine them into a composite image
+            if len(item.objects) == 1:
+                obj = item.objects[0]
+                ow, oh = obj.width, obj.height
+                if ow <= 0 or oh <= 0:
+                    continue
 
-            scaled_w = max(2, int(round(comp_src_w * scale_x)))
-            scaled_h = max(2, int(round(comp_src_h * scale_y)))
-            scaled_x = max(0, min(target_w - scaled_w, int(round(min_src_x * scale_x))))
-            scaled_y = max(0, min(target_h - scaled_h, int(round(min_src_y * scale_y))))
+                scaled_w = max(2, int(round(ow * scale_x)))
+                scaled_h = max(2, int(round(oh * scale_y)))
+                scaled_x = max(0, min(target_w - scaled_w, int(round(obj.x * scale_x))))
+                scaled_y = max(0, min(target_h - scaled_h, int(round(obj.y * scale_y))))
 
-            scaled_x &= ~1
-            scaled_y &= ~1
-            scaled_w = max(2, (scaled_w + 1) & ~1)
-            scaled_h = max(2, (scaled_h + 1) & ~1)
-            if scaled_x + scaled_w > target_w:
-                scaled_w = target_w - scaled_x
-            if scaled_y + scaled_h > target_h:
-                scaled_h = target_h - scaled_y
+                # Force even coordinates and dimensions for DVD MPEG-2 interlaced subpicture chroma alignment
+                scaled_x &= ~1
+                scaled_y &= ~1
+                scaled_w = max(2, (scaled_w + 1) & ~1)
+                scaled_h = max(2, (scaled_h + 1) & ~1)
+                if scaled_x + scaled_w > target_w:
+                    scaled_w = target_w - scaled_x
+                if scaled_y + scaled_h > target_h:
+                    scaled_h = target_h - scaled_y
 
-            resized_img = composite_src.resize((scaled_w, scaled_h), Image.Resampling.BILINEAR)
-            png_filename = f"{prefix}_{idx:04d}.png"
-            png_path = os.path.join(output_dir, png_filename)
-            resized_img.save(png_path, "PNG")
+                resized_img = obj.image.resize((scaled_w, scaled_h), Image.Resampling.BILINEAR)
+                png_filename = f"{prefix}_{idx:04d}.png"
+                png_path = os.path.join(output_dir, png_filename)
+                resized_img.save(png_path, "PNG")
 
-        # Format start and end timestamps in HH:MM:SS.mmm format for spumux
-        sh = int(start_s // 3600)
-        sm = int((start_s % 3600) // 60)
-        ss = start_s % 60
-        start_str = f"{sh:02d}:{sm:02d}:{ss:06.3f}"
+            else:
+                # Multi-object display set: compute bounding box in source canvas
+                min_src_x = min(o.x for o in item.objects)
+                min_src_y = min(o.y for o in item.objects)
+                max_src_x = max(o.x + o.width for o in item.objects)
+                max_src_y = max(o.y + o.height for o in item.objects)
+                comp_src_w = max(1, max_src_x - min_src_x)
+                comp_src_h = max(1, max_src_y - min_src_y)
 
-        eh = int(end_s // 3600)
-        em = int((end_s % 3600) // 60)
-        es = end_s % 60
-        end_str = f"{eh:02d}:{em:02d}:{es:06.3f}"
+                composite_src = Image.new("RGBA", (comp_src_w, comp_src_h), (0, 0, 0, 0))
+                for o in item.objects:
+                    composite_src.paste(o.image, (o.x - min_src_x, o.y - min_src_y), o.image)
 
-        spu_lines.append(
-            f'    <spu start="{start_str}" end="{end_str}" image="{png_path}" xoffset="{scaled_x}" yoffset="{scaled_y}" />'
-        )
-        valid_spu_count += 1
+                scaled_w = max(2, int(round(comp_src_w * scale_x)))
+                scaled_h = max(2, int(round(comp_src_h * scale_y)))
+                scaled_x = max(0, min(target_w - scaled_w, int(round(min_src_x * scale_x))))
+                scaled_y = max(0, min(target_h - scaled_h, int(round(min_src_y * scale_y))))
+
+                scaled_x &= ~1
+                scaled_y &= ~1
+                scaled_w = max(2, (scaled_w + 1) & ~1)
+                scaled_h = max(2, (scaled_h + 1) & ~1)
+                if scaled_x + scaled_w > target_w:
+                    scaled_w = target_w - scaled_x
+                if scaled_y + scaled_h > target_h:
+                    scaled_h = target_h - scaled_y
+
+                resized_img = composite_src.resize((scaled_w, scaled_h), Image.Resampling.BILINEAR)
+                png_filename = f"{prefix}_{idx:04d}.png"
+                png_path = os.path.join(output_dir, png_filename)
+                resized_img.save(png_path, "PNG")
+
+            # Format start and end timestamps in HH:MM:SS.mmm format for spumux
+            sh = int(start_s // 3600)
+            sm = int((start_s % 3600) // 60)
+            ss = start_s % 60
+            start_str = f"{sh:02d}:{sm:02d}:{ss:06.3f}"
+
+            eh = int(end_s // 3600)
+            em = int((end_s % 3600) // 60)
+            es = end_s % 60
+            end_str = f"{eh:02d}:{em:02d}:{es:06.3f}"
+
+            spu_lines.append(
+                f'    <spu start="{start_str}" end="{end_str}" image="{png_path}" xoffset="{scaled_x}" yoffset="{scaled_y}" />'
+            )
+            valid_spu_count += 1
 
     if valid_spu_count == 0:
-        return None
+        if max_duration_sec is not None:
+            # Generate fallback subtitle preview box so user can always verify subpicture rendering
+            from PIL import ImageDraw
+            preview_png = os.path.join(output_dir, f"{prefix}_preview.png")
+            box_w, box_h = 360, 48
+            preview_img = Image.new("RGBA", (box_w, box_h), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(preview_img)
+            draw.rectangle([0, 0, box_w - 1, box_h - 1], fill=(0, 0, 0, 200), outline=(255, 255, 255, 255), width=2)
+            lbl = preview_label or "Subtitles"
+            draw.text((16, 14), f"[{lbl}]", fill=(255, 255, 255, 255))
+            x_off = ((target_w - box_w) // 2) & ~1
+            y_off = (target_h - 70) & ~1
+            preview_img.save(preview_png, "PNG")
+            spu_lines.append(
+                f'    <spu start="00:00:02.000" end="00:00:08.000" image="{preview_png}" xoffset="{x_off}" yoffset="{y_off}" />'
+            )
+            valid_spu_count += 1
+        else:
+            return None
 
     spu_lines.extend(["  </stream>", "</subpictures>"])
     xml_path = os.path.join(output_dir, f"{prefix}_spumux.xml")

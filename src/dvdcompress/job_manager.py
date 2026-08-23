@@ -773,7 +773,6 @@ class JobManager:
                             track_name = sub_info.get("title") or "Subtitles"
                             if sub_info.get("is_bitmap", False):
                                 self.log(job_id, f"Converting PGS bitmap subtitle track [{lang}]: {track_name} for DVD-Video...")
-                                seek_s = max(0.0, (info.duration_sec / 2.0) - 30.0) if (is_preview and info.duration_sec > 60.0) else 0.0
                                 dur_s = min(60.0, info.duration_sec) if is_preview else None
                                 pgs_xml_path = convert_pgs_to_spumux_xml(
                                     sup_path=sub_info["path"],
@@ -781,8 +780,9 @@ class JobManager:
                                     prefix=f"pgs_t{t_idx+1}_s{s_idx}",
                                     tv_standard=job.tv_standard,
                                     aspect_ratio=job.aspect_ratio,
-                                    pts_offset=seek_s,
+                                    pts_offset=0.0,
                                     max_duration_sec=dur_s,
+                                    preview_label=f"{lang.upper()} - {track_name}",
                                 )
                                 if pgs_xml_path and os.path.exists(pgs_xml_path):
                                     xml_paths.append(pgs_xml_path)
