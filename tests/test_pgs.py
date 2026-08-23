@@ -171,10 +171,23 @@ def test_parse_pgs_sup_and_convert(tmp_path):
     png_path = os.path.join(out_dir, "dvd_test_0000.png")
     assert os.path.exists(png_path)
     with Image.open(png_path) as img:
-        # Scaled width should be approx 80 * (720/1920) = 30
         assert img.width > 0
         assert img.height > 0
-        assert img.mode == "RGBA"
+        assert img.mode in ("P", "RGBA")
+
+
+def test_quantize_to_dvd_subpicture():
+    from dvdcompress.pgs import quantize_to_dvd_subpicture
+    # Create smooth gradient image with 256 colors
+    raw = Image.new("RGBA", (100, 20), (0, 0, 0, 0))
+    for x in range(100):
+        for y in range(20):
+            raw.putpixel((x, y), (255, 255, 255, int(255 * (x / 100))))
+    quantized = quantize_to_dvd_subpicture(raw)
+    assert quantized.mode == "P"
+    colors = quantized.getcolors()
+    # Number of discrete palette colors used must be <= 4 for DVD subpicture compliance
+    assert len(colors) <= 4
 
 
 def test_parse_pgs_multi_segment_ods(tmp_path):

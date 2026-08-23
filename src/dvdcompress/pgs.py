@@ -37,6 +37,68 @@ def ycbcr_to_rgba(y: int, cb: int, cr: int, a: int) -> Tuple[int, int, int, int]
     return (r, g, b, a)
 
 
+def quantize_to_dvd_subpicture(img_rgba: Image.Image) -> Image.Image:
+    """Quantize an RGBA subtitle image into a standard 4-color indexed DVD subpicture (Mode P).
+
+    DVD subpictures strictly support at most 4 discrete colors per frame:
+      Index 0: Transparent background (alpha < 32)
+      Index 1: Primary text fill (White / Bright text)
+      Index 2: Dark outline / shadow (Black)
+      Index 3: Anti-aliasing / edge transition (Gray)
+    """
+    img = img_rgba.convert("RGBA")
+    w, h = img.size
+
+    out = Image.new("P", (w, h), 0)
+    pal = [
+        0, 0, 0,        # 0: Transparent background
+        255, 255, 255,  # 1: Primary text fill (White)
+        0, 0, 0,        # 2: Dark outline / shadow (Black)
+        128, 128, 128,  # 3: Anti-aliasing (Gray)
+    ]
+    pal.extend([0] * (768 - len(pal)))
+    out.putpalette(pal)
+    out.info["transparency"] = 0
+
+    pixels = img.load()
+    out_pixels = out.load()
+
+    # Detect if subtitle has colored/yellow text
+    has_yellow = False
+    step_y = max(1, h // 10)
+    step_x = max(1, w // 10)
+    for y in range(0, h, step_y):
+        for x in range(0, w, step_x):
+            r, g, b, a = pixels[x, y]
+            if a >= 128 and r > 180 and g > 180 and b < 100:
+                has_yellow = True
+                break
+        if has_yellow:
+            break
+
+    if has_yellow:
+        pal[3] = 255
+        pal[4] = 255
+        pal[5] = 0
+        out.putpalette(pal)
+
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = pixels[x, y]
+            if a < 32:
+                out_pixels[x, y] = 0
+            else:
+                lum = int(0.299 * r + 0.587 * g + 0.114 * b)
+                if lum > 170:
+                    out_pixels[x, y] = 1
+                elif lum < 75:
+                    out_pixels[x, y] = 2
+                else:
+                    out_pixels[x, y] = 3
+
+    return out
+
+
 def decode_pgs_rle(rle_data: bytes, width: int, height: int) -> bytearray:
     """Decode PGS run-length encoded bitmap stream into a raw palette index buffer."""
     total_pixels = width * height
@@ -338,9 +400,10 @@ def convert_pgs_to_spumux_xml(
                     scaled_h = target_h - scaled_y
 
                 resized_img = obj.image.resize((scaled_w, scaled_h), Image.Resampling.BILINEAR)
+                quantized_img = quantize_to_dvd_subpicture(resized_img)
                 png_filename = f"{prefix}_{idx:04d}.png"
                 png_path = os.path.join(output_dir, png_filename)
-                resized_img.save(png_path, "PNG")
+                quantized_img.save(png_path, "PNG", transparency=0)
 
             else:
                 # Multi-object display set: compute bounding box in source canvas
@@ -370,9 +433,10 @@ def convert_pgs_to_spumux_xml(
                     scaled_h = target_h - scaled_y
 
                 resized_img = composite_src.resize((scaled_w, scaled_h), Image.Resampling.BILINEAR)
+                quantized_img = quantize_to_dvd_subpicture(resized_img)
                 png_filename = f"{prefix}_{idx:04d}.png"
                 png_path = os.path.join(output_dir, png_filename)
-                resized_img.save(png_path, "PNG")
+                quantized_img.save(png_path, "PNG", transparency=0)
 
             # Format start and end timestamps in HH:MM:SS.mmm format for spumux
             sh = int(start_s // 3600)
@@ -398,12 +462,13 @@ def convert_pgs_to_spumux_xml(
             box_w, box_h = 360, 48
             preview_img = Image.new("RGBA", (box_w, box_h), (0, 0, 0, 0))
             draw = ImageDraw.Draw(preview_img)
-            draw.rectangle([0, 0, box_w - 1, box_h - 1], fill=(0, 0, 0, 200), outline=(255, 255, 255, 255), width=2)
+            draw.rectangle([0, 0, box_w - 1, box_h - 1], fill=(0, 0, 0, 255), outline=(255, 255, 255, 255), width=2)
             lbl = preview_label or "Subtitles"
             draw.text((16, 14), f"[{lbl}]", fill=(255, 255, 255, 255))
+            quantized_preview = quantize_to_dvd_subpicture(preview_img)
             x_off = ((target_w - box_w) // 2) & ~1
             y_off = (target_h - 70) & ~1
-            preview_img.save(preview_png, "PNG")
+            quantized_preview.save(preview_png, "PNG", transparency=0)
             spu_lines.append(
                 f'    <spu start="00:00:02.000" end="00:00:08.000" image="{preview_png}" xoffset="{x_off}" yoffset="{y_off}" />'
             )
