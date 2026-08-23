@@ -79,6 +79,24 @@ def test_dvdauthor_xml_with_title_menu_multi_titles():
     assert xml.count("<post>call vmgm menu entry title;</post>") == 3
 
 
+def test_dvdauthor_xml_with_title_menu_play_next_action():
+    from dvdcompress.models import MenuEndAction
+    xml = generate_dvdauthor_xml(
+        titles_mpg=["/tmp/ep1.mpg", "/tmp/ep2.mpg", "/tmp/ep3.mpg"],
+        chapters_sec=[[0.0], [0.0], [0.0]],
+        menu_mode=MenuMode.MENU,
+        menu_vob="/tmp/menu.mpg",
+        menu_end_action=MenuEndAction.PLAY_NEXT,
+        tv_standard=TVStandard.NTSC,
+    )
+    # Title 1 and 2 jump to the next title in sequence
+    assert "<post>jump pgc 2;</post>" in xml
+    assert "<post>jump pgc 3;</post>" in xml
+    # Title 3 (last title) returns to the menu
+    assert "<post>call vmgm menu entry title;</post>" in xml
+    assert xml.count("<post>call vmgm menu entry title;</post>") == 1
+
+
 def test_generate_tsmuxer_meta():
     meta = generate_tsmuxer_meta(["/tmp/track1.m2ts", "/tmp/track2.m2ts"])
     assert "MUXOPT --no-pcr-on-video-pid --new-audio-pes --blu-ray --vbr --auto-chapters=5" in meta

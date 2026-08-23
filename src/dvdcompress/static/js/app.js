@@ -17,6 +17,7 @@
       tv_standard: 'auto',
       aspect_ratio: '16:9',
       menu_mode: 'autoplay',
+      menu_end_action: 'menu',
       output_mode: 'iso_only',
       burner_device: '',
       burn_speed: 4,
@@ -180,6 +181,15 @@
     // Playback Mode
     setupSegmentGroup('control-menu-mode', (val) => {
       state.config.menu_mode = val;
+      const groupMenuEnd = document.getElementById('group-menu-end-action');
+      if (groupMenuEnd) {
+        groupMenuEnd.style.display = (val === 'menu') ? 'block' : 'none';
+      }
+    });
+
+    // After Title Finishes
+    setupSegmentGroup('control-menu-end-action', (val) => {
+      state.config.menu_end_action = val;
     });
 
     // Standalone Burner Media Type
@@ -1274,6 +1284,7 @@
       tv_standard: state.config.tv_standard,
       aspect_ratio: state.config.aspect_ratio,
       menu_mode: state.config.menu_mode,
+      menu_end_action: state.config.menu_end_action || 'menu',
       burner_device: state.config.burner_device || null,
       burn_speed: state.config.burn_speed || 4,
       use_gpu: state.config.use_gpu,
@@ -1452,6 +1463,7 @@
       tv_standard: state.config.tv_standard,
       aspect_ratio: state.config.aspect_ratio,
       menu_mode: state.config.menu_mode,
+      menu_end_action: state.config.menu_end_action || 'menu',
       use_gpu: state.config.use_gpu,
       passthrough: state.config.passthrough,
       selected_subtitle_indices: selectedSubtitleIndices,
@@ -1800,10 +1812,18 @@
       setSegmentGroupValue('control-aspect-ratio', job.aspect_ratio);
     }
 
-    // 5. Menu Mode
+    // 5. Menu Mode & After Title Finishes
     if (job.menu_mode) {
       state.config.menu_mode = job.menu_mode;
       setSegmentGroupValue('control-menu-mode', job.menu_mode);
+      const groupMenuEnd = document.getElementById('group-menu-end-action');
+      if (groupMenuEnd) {
+        groupMenuEnd.style.display = (job.menu_mode === 'menu') ? 'block' : 'none';
+      }
+    }
+    if (job.menu_end_action) {
+      state.config.menu_end_action = job.menu_end_action;
+      setSegmentGroupValue('control-menu-end-action', job.menu_end_action);
     }
 
     // 6. Output Mode & Burner Options

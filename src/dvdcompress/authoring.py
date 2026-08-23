@@ -1,6 +1,6 @@
 import os
 from typing import Any, Dict, List, Optional
-from dvdcompress.models import AspectRatio, MenuMode, TVStandard
+from dvdcompress.models import AspectRatio, MenuEndAction, MenuMode, TVStandard
 
 
 def format_chapter_time(seconds: float) -> str:
@@ -160,6 +160,7 @@ def generate_dvdauthor_xml(
     subtitles_lang: Optional[List[str]] = None,
     menu_vob: Optional[str] = None,
     aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9,
+    menu_end_action: MenuEndAction = MenuEndAction.RETURN_TO_MENU,
 ) -> str:
     """Generate a standard dvdauthor.xml structure for authoring DVD-Video."""
     video_format = "ntsc" if tv_standard in (TVStandard.NTSC, TVStandard.AUTO) else "pal"
@@ -212,7 +213,10 @@ def generate_dvdauthor_xml(
         xml_lines.append(f'        <vob file="{mpg}" chapters="{chap_str}" />')
 
         if has_menu:
-            xml_lines.append("        <post>call vmgm menu entry title;</post>")
+            if menu_end_action == MenuEndAction.PLAY_NEXT and idx < len(titles_mpg) - 1:
+                xml_lines.append(f"        <post>jump pgc {idx + 2};</post>")
+            else:
+                xml_lines.append("        <post>call vmgm menu entry title;</post>")
         else:
             # Play next title or loop back to title 1 within the same titleset
             if idx < len(titles_mpg) - 1:

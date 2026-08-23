@@ -26,6 +26,10 @@ class MenuMode(str, Enum):
     AUTOPLAY = "autoplay"
     MENU = "menu"
 
+class MenuEndAction(str, Enum):
+    RETURN_TO_MENU = "menu"
+    PLAY_NEXT = "next"
+
 class OutputMode(str, Enum):
     ISO_ONLY = "iso_only"
     BURN_DIRECT = "burn_direct"
@@ -97,6 +101,7 @@ class ProjectConfig(BaseModel):
     tv_standard: TVStandard = TVStandard.AUTO
     aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9
     menu_mode: MenuMode = MenuMode.AUTOPLAY
+    menu_end_action: MenuEndAction = MenuEndAction.RETURN_TO_MENU
     disc_label: str = "DVD_VIDEO"
     burn_device: Optional[str] = None
     burn_speed: int = 4

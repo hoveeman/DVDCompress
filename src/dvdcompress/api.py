@@ -31,6 +31,7 @@ from dvdcompress.models import (
     DiscType,
     MediaInfo,
     MenuMode,
+    MenuEndAction,
     OutputMode,
     TVStandard,
 )
@@ -100,6 +101,7 @@ class CreateJobRequest(BaseModel):
     tv_standard: TVStandard = TVStandard.AUTO
     aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9
     menu_mode: MenuMode = MenuMode.AUTOPLAY
+    menu_end_action: MenuEndAction = MenuEndAction.RETURN_TO_MENU
     burner_device: Optional[str] = None
     burn_speed: int = 4
     use_gpu: bool = True
@@ -154,6 +156,7 @@ class CreatePreviewRequest(BaseModel):
     tv_standard: TVStandard = TVStandard.AUTO
     aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9
     menu_mode: MenuMode = MenuMode.AUTOPLAY
+    menu_end_action: MenuEndAction = MenuEndAction.RETURN_TO_MENU
     use_gpu: bool = True
     passthrough: bool = False
     custom_bitrate_kbps: Optional[int] = None
@@ -417,6 +420,7 @@ async def create_job(req: CreateJobRequest):
         tv_standard=req.tv_standard,
         aspect_ratio=req.aspect_ratio,
         menu_mode=req.menu_mode,
+        menu_end_action=req.menu_end_action,
         burner_device=req.burner_device,
         burn_speed=req.burn_speed,
         use_gpu=req.use_gpu,
@@ -483,6 +487,7 @@ async def create_preview(req: CreatePreviewRequest):
         tv_standard=req.tv_standard,
         aspect_ratio=req.aspect_ratio,
         menu_mode=req.menu_mode,
+        menu_end_action=req.menu_end_action,
         use_gpu=req.use_gpu,
         passthrough=req.passthrough,
         selected_subtitle_indices=req.selected_subtitle_indices,
@@ -565,6 +570,7 @@ async def retry_job_endpoint(job_id: str):
         tv_standard=job.tv_standard,
         aspect_ratio=job.aspect_ratio,
         menu_mode=job.menu_mode,
+        menu_end_action=job.menu_end_action,
         burner_device=job.burner_device,
         burn_speed=job.burn_speed,
         use_gpu=job.use_gpu,

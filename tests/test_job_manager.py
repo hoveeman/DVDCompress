@@ -12,6 +12,7 @@ from dvdcompress.models import (
     DiscType,
     MediaInfo,
     MenuMode,
+    MenuEndAction,
     OutputMode,
     SubtitleStreamInfo,
     TVStandard,
@@ -304,6 +305,98 @@ async def test_job_pipeline_dvd_with_interactive_title_menu_success(tmp_path):
         assert any("Generating interactive DVD Title Menu" in log for log in job.logs)
         assert any("Successfully created interactive Title Menu" in log for log in job.logs)
         assert job.output_iso_path == os.path.join(output_dir, "series_dvd.iso")
+
+
+@pytest.mark.asyncio
+async def test_job_pipeline_dvd_menu_play_next_action(tmp_path):
+    scratch_dir = str(tmp_path / "scratch")
+    output_dir = str(tmp_path / "output")
+
+    fake_media_info = MediaInfo(
+        path="/media/ep1.mkv",
+        filename="ep1.mkv",
+        duration_sec=1800.0,
+        width=1920,
+        height=1080,
+        aspect_ratio="16:9",
+        frame_rate=23.976,
+        video_codec="h264",
+        audio_streams=[
+            AudioStreamInfo(
+                index=1,
+                codec_name="ac3",
+                channels=2,
+                channel_layout="stereo",
+                language="eng",
+                title="English",
+                bitrate=384000,
+            )
+        ],
+        subtitle_streams=[],
+        chapters_count=0,
+        size_bytes=500000000,
+    )
+
+    manager = JobManager()
+    job_id = manager.create_job(
+        input_files=["/media/ep1.mkv", "/media/ep2.mkv"],
+        disc_type=DiscType.DVD5,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="series_dvd_play_next",
+        tv_standard=TVStandard.NTSC,
+        aspect_ratio=AspectRatio.RATIO_16_9,
+        menu_mode=MenuMode.MENU,
+        menu_end_action=MenuEndAction.PLAY_NEXT,
+    )
+
+    class MockMenuProcess:
+        def __init__(self, *args, **kwargs):
+            self.returncode = 0
+            self.stderr = AsyncMock()
+            progress_bytes = b"frame= 100 fps= 45.0 q=2.0 size= 1024kB time=00:30:00.00 bitrate= 4500kbits/s speed= 2.1x\n"
+            self.stderr.read = AsyncMock(side_effect=[progress_bytes, b""])
+            self.stderr.readline = AsyncMock(side_effect=[progress_bytes, b""])
+            self.stdout = AsyncMock()
+            self.stdout.read = AsyncMock(return_value=b"")
+            self.stdout.readline = AsyncMock(return_value=b"")
+
+        async def wait(self):
+            return 0
+
+        async def communicate(self):
+            return (b"", b"")
+
+    def mock_subprocess(*args, **kwargs):
+        cmd_str = " ".join(str(a) for a in args)
+        work_dir = os.path.join(scratch_dir, job_id)
+        os.makedirs(work_dir, exist_ok=True)
+        if "menu_raw.mpg" in cmd_str:
+            with open(os.path.join(work_dir, "menu_raw.mpg"), "wb") as f:
+                f.write(b"MOCK_RAW_MENU")
+        if "menu.mpg" in cmd_str:
+            with open(os.path.join(work_dir, "menu.mpg"), "wb") as f:
+                f.write(b"MOCK_MENU_VOB")
+        return MockMenuProcess()
+
+    with patch(
+        "dvdcompress.job_manager.probe_media_file",
+        new_callable=AsyncMock,
+        return_value=fake_media_info,
+    ), patch(
+        "asyncio.create_subprocess_exec",
+        side_effect=mock_subprocess,
+    ), patch(
+        "asyncio.create_subprocess_shell",
+        side_effect=mock_subprocess,
+    ):
+        await manager.start_job(job_id, scratch_dir=scratch_dir, output_dir=output_dir)
+        task = manager.active_tasks[job_id]
+        await task
+
+        job = manager.get_job(job_id)
+        assert job is not None
+        assert job.stage == JobStage.COMPLETED
+        assert job.menu_end_action == MenuEndAction.PLAY_NEXT
 
 
 @pytest.mark.asyncio

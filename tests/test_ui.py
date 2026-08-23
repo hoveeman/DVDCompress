@@ -309,6 +309,26 @@ def test_job_history_table_responsive_container():
     assert ".jobs-table" in css
 
 
+def test_menu_end_action_ui_elements():
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    html = res_html.text
+    assert 'id="group-menu-end-action"' in html
+    assert 'id="control-menu-end-action"' in html
+    assert 'data-value="menu"' in html
+    assert 'data-value="next"' in html
+    assert "Return to Menu" in html
+    assert "Play Next Title" in html
+
+    res_js = client.get("/js/app.js")
+    assert res_js.status_code == 200
+    js = res_js.text
+    assert "control-menu-end-action" in js
+    assert "menu_end_action" in js
+    assert "group-menu-end-action" in js
+
+
+
 
 
 

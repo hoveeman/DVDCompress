@@ -37,7 +37,7 @@ from dvdcompress.iso import (
     build_genisoimage_command,
     build_xorriso_bd_command,
 )
-from dvdcompress.models import AspectRatio, DiscType, MenuMode, OutputMode, TVStandard
+from dvdcompress.models import AspectRatio, DiscType, MenuEndAction, MenuMode, OutputMode, TVStandard
 from dvdcompress.probe import probe_media_file
 from dvdcompress.transcoder import (
     build_bluray_transcode_command,
@@ -81,6 +81,7 @@ class Job(BaseModel):
     tv_standard: TVStandard = TVStandard.AUTO
     aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9
     menu_mode: MenuMode = MenuMode.AUTOPLAY
+    menu_end_action: MenuEndAction = MenuEndAction.RETURN_TO_MENU
     burner_device: Optional[str] = None
     burn_speed: int = 4
     use_gpu: bool = True
@@ -173,6 +174,7 @@ class JobManager:
         tv_standard: TVStandard = TVStandard.AUTO,
         aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9,
         menu_mode: MenuMode = MenuMode.AUTOPLAY,
+        menu_end_action: MenuEndAction = MenuEndAction.RETURN_TO_MENU,
         burner_device: Optional[str] = None,
         burn_speed: int = 4,
         use_gpu: bool = True,
@@ -190,6 +192,7 @@ class JobManager:
             tv_standard=tv_standard,
             aspect_ratio=aspect_ratio,
             menu_mode=menu_mode,
+            menu_end_action=menu_end_action,
             burner_device=burner_device,
             burn_speed=burn_speed,
             use_gpu=use_gpu,
@@ -956,6 +959,7 @@ class JobManager:
                     subtitles_lang=dvd_sub_langs if dvd_sub_langs else None,
                     menu_vob=menu_vob_path,
                     aspect_ratio=job.aspect_ratio,
+                    menu_end_action=job.menu_end_action,
                 )
                 xml_path = os.path.join(work_dir, "dvdauthor.xml")
                 with open(xml_path, "w", encoding="utf-8") as xf:

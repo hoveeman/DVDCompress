@@ -761,6 +761,35 @@ def test_api_retry_job(tmp_path):
         mock_start.assert_called_once()
 
 
+def test_api_create_job_with_menu_end_action(tmp_path):
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"dummy")
+
+    with patch.object(job_manager, "start_job", new_callable=AsyncMock) as mock_start:
+        mock_start.return_value = None
+        res = client.post(
+            "/api/jobs",
+            json={
+                "input_files": [str(clip)],
+                "disc_type": "dvd5",
+                "output_mode": "iso_only",
+                "output_name": "menu_auto_next",
+                "tv_standard": "ntsc",
+                "aspect_ratio": "16:9",
+                "menu_mode": "menu",
+                "menu_end_action": "next",
+                "use_gpu": False,
+            },
+        )
+        assert res.status_code == 200
+        job_id = res.json()["job_id"]
+        job = job_manager.get_job(job_id)
+        assert job is not None
+        assert job.menu_mode == MenuMode.MENU
+        assert job.menu_end_action == "next"
+
+
+
 
 
 
