@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from dvdcompress.authoring import (
     build_spumux_pipeline_command,
     build_subtitle_extraction_command,
+    generate_dvd_palette_rgb,
     generate_dvdauthor_xml,
     generate_spumux_xml,
     generate_tsmuxer_meta,
@@ -688,7 +689,10 @@ class JobManager:
                     if sub_proc.returncode == 0:
                         if not os.path.exists(sub_out_path) or (not is_bmp and os.path.getsize(sub_out_path) == 0):
                             with open(sub_out_path, "w", encoding="utf-8") as bf:
-                                bf.write("1\n00:00:00,100 --> 00:00:00,200\n \n" if not is_bmp else "")
+                                if is_preview and not is_bmp:
+                                    bf.write(f"1\n00:00:02,000 --> 00:00:08,000\n[Subtitles: {lang.upper()}]\n")
+                                else:
+                                    bf.write("1\n00:00:00,100 --> 00:00:00,200\n \n" if not is_bmp else "")
 
                         title_subs.append({
                             "path": sub_out_path,
@@ -769,12 +773,16 @@ class JobManager:
                             track_name = sub_info.get("title") or "Subtitles"
                             if sub_info.get("is_bitmap", False):
                                 self.log(job_id, f"Converting PGS bitmap subtitle track [{lang}]: {track_name} for DVD-Video...")
+                                seek_s = max(0.0, (info.duration_sec / 2.0) - 30.0) if (is_preview and info.duration_sec > 60.0) else 0.0
+                                dur_s = min(60.0, info.duration_sec) if is_preview else None
                                 pgs_xml_path = convert_pgs_to_spumux_xml(
                                     sup_path=sub_info["path"],
                                     output_dir=work_dir,
                                     prefix=f"pgs_t{t_idx+1}_s{s_idx}",
                                     tv_standard=job.tv_standard,
                                     aspect_ratio=job.aspect_ratio,
+                                    pts_offset=seek_s,
+                                    max_duration_sec=dur_s,
                                 )
                                 if pgs_xml_path and os.path.exists(pgs_xml_path):
                                     xml_paths.append(pgs_xml_path)
@@ -969,6 +977,12 @@ class JobManager:
                     if len(valid_subs) > len(dvd_sub_langs):
                         dvd_sub_langs = [s["lang"] for s in valid_subs[:32]]
 
+                # Write standard DVD subtitle palette
+                palette_content = generate_dvd_palette_rgb()
+                palette_path = os.path.join(work_dir, "palette.rgb")
+                with open(palette_path, "w", encoding="utf-8") as pf:
+                    pf.write(palette_content)
+
                 xml_content = generate_dvdauthor_xml(
                     titles_mpg=transcoded_files,
                     chapters_sec=chapters_list,
@@ -978,6 +992,7 @@ class JobManager:
                     menu_vob=menu_vob_path,
                     aspect_ratio=job.aspect_ratio,
                     menu_end_action=job.menu_end_action,
+                    palette_file=palette_path,
                 )
                 xml_path = os.path.join(work_dir, "dvdauthor.xml")
                 with open(xml_path, "w", encoding="utf-8") as xf:

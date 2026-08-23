@@ -152,6 +152,29 @@ def normalize_lang_code_2(lang: Optional[str]) -> str:
     return l_lower[:2]
 
 
+def generate_dvd_palette_rgb() -> str:
+    """Generate standard 16-color RGB palette for DVD-Video subpictures and menus."""
+    palette_colors = [
+        "000000",  # 0: Transparent background / dark outline
+        "FFFFFF",  # 1: White text fill
+        "101010",  # 2: Dark shadow
+        "808080",  # 3: Gray anti-aliasing
+        "FFFF00",  # 4: Yellow text
+        "0000FF",  # 5: Blue
+        "FF0000",  # 6: Red
+        "00FF00",  # 7: Green
+        "00FFFF",  # 8: Cyan
+        "FF00FF",  # 9: Magenta
+        "E0E0E0",  # 10: Light Gray
+        "A0A0A0",  # 11: Gray
+        "606060",  # 12: Dim Gray
+        "303030",  # 13: Dark Slate
+        "1A1A1A",  # 14: Near Black
+        "F0F0F0",  # 15: Bright White
+    ]
+    return "\n".join(palette_colors) + "\n"
+
+
 def generate_dvdauthor_xml(
     titles_mpg: List[str],
     chapters_sec: List[List[float]],
@@ -161,6 +184,7 @@ def generate_dvdauthor_xml(
     menu_vob: Optional[str] = None,
     aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9,
     menu_end_action: MenuEndAction = MenuEndAction.RETURN_TO_MENU,
+    palette_file: Optional[str] = None,
 ) -> str:
     """Generate a standard dvdauthor.xml structure for authoring DVD-Video."""
     video_format = "ntsc" if tv_standard in (TVStandard.NTSC, TVStandard.AUTO) else "pal"
@@ -171,12 +195,13 @@ def generate_dvdauthor_xml(
     xml_lines = ['<dvdauthor dest="VIDEO_TS">']
 
     if has_menu:
+        menu_pgc_attr = f' entry="title" palette="{palette_file}"' if palette_file else ' entry="title"'
         xml_lines.extend([
             '  <vmgm>',
             '    <menus>',
             f'      <video format="{video_format}" {aspect_attr} />',
             '      <audio format="ac3" channels="2" />',
-            '      <pgc entry="title">',
+            f'      <pgc{menu_pgc_attr}>',
             f'        <vob file="{menu_vob}" pause="inf" />',
         ])
         for idx in range(len(titles_mpg)):
@@ -209,7 +234,8 @@ def generate_dvdauthor_xml(
             else [0.0]
         )
         chap_str = ",".join([format_chapter_time(c) for c in chaps])
-        xml_lines.append("      <pgc>")
+        pgc_attr = f' palette="{palette_file}"' if palette_file else ''
+        xml_lines.append(f"      <pgc{pgc_attr}>")
         xml_lines.append(f'        <vob file="{mpg}" chapters="{chap_str}" />')
 
         if has_menu:

@@ -75,6 +75,7 @@ __all__ = [
     "build_bluray_transcode_command",
     "parse_ffmpeg_progress_line",
     "generate_dvdauthor_xml",
+    "generate_dvd_palette_rgb",
     "generate_tsmuxer_meta",
     "generate_spumux_xml",
     "build_spumux_pipeline_command",

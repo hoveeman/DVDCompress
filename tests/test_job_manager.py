@@ -1416,7 +1416,7 @@ async def test_job_pipeline_dvd_pgs_bitmap_subtitle_conversion(tmp_path, monkeyp
         return FakeSpu()
 
     # Mock convert_pgs_to_spumux_xml to generate a mock spumux XML
-    def fake_convert_pgs(sup_path, output_dir, prefix, tv_standard, aspect_ratio):
+    def fake_convert_pgs(sup_path, output_dir, prefix, tv_standard, aspect_ratio, **kwargs):
         xml_p = os.path.join(output_dir, f"{prefix}_spumux.xml")
         with open(xml_p, "w") as f:
             f.write(f'<subpictures format="NTSC"><stream><spu start="00:00:01.000" end="00:00:03.000" image="{prefix}_0000.png" xoffset="100" yoffset="300" /></stream></subpictures>')

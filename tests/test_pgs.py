@@ -237,3 +237,47 @@ def test_parse_pgs_empty_and_corrupt(tmp_path):
 
     # convert_pgs_to_spumux_xml returns None on empty
     assert convert_pgs_to_spumux_xml(empty_sup, str(tmp_path / "out")) is None
+
+
+def test_convert_pgs_to_spumux_xml_with_pts_offset(tmp_path):
+    """Verify that pts_offset properly shifts start and end timestamps and clamps to max_duration_sec."""
+    sup_path = str(tmp_path / "offset_test.sup")
+    out_dir = str(tmp_path / "offset_out")
+
+    pds_payload = bytearray([0x00, 0x00, 0, 0, 128, 128, 0, 1, 235, 128, 128, 255])
+    rle_data = bytearray([0x00, 0x80 | 10, 0x01, 0x00, 0x00])
+    w, h = 10, 1
+    ods_payload = bytearray([0x00, 0x01, 0x00, 0xC0, 0x00, len(rle_data) + 4 >> 8, len(rle_data) + 4 & 0xFF, (w >> 8) & 0xFF, w & 0xFF, (h >> 8) & 0xFF, h & 0xFF])
+    ods_payload.extend(rle_data)
+
+    pcs_start = bytearray([0x07, 0x80, 0x04, 0x38, 0x10, 0x00, 0x01, 0x80, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x64, 0x00, 0x64])
+    pcs_clear = bytearray([0x07, 0x80, 0x04, 0x38, 0x10, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00])
+
+    # Event from 3815.0s to 3820.0s (seek_start is 3813.0s)
+    sup_bytes = (
+        _build_pgs_packet(343350000, 0, 0x16, pcs_start)
+        + _build_pgs_packet(343350000, 0, 0x14, pds_payload)
+        + _build_pgs_packet(343350000, 0, 0x15, ods_payload)
+        + _build_pgs_packet(343350000, 0, 0x80, b"")
+        + _build_pgs_packet(343800000, 0, 0x16, pcs_clear)
+        + _build_pgs_packet(343800000, 0, 0x80, b"")
+    )
+    with open(sup_path, "wb") as f:
+        f.write(sup_bytes)
+
+    xml_path = convert_pgs_to_spumux_xml(
+        sup_path=sup_path,
+        output_dir=out_dir,
+        prefix="offset_test",
+        tv_standard=TVStandard.NTSC,
+        aspect_ratio=AspectRatio.RATIO_16_9,
+        pts_offset=3813.0,
+        max_duration_sec=60.0,
+    )
+    assert xml_path is not None
+    with open(xml_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # 3815 - 3813 = 2.0s, 3820 - 3813 = 7.0s
+    assert 'start="00:00:02.000"' in content
+    assert 'end="00:00:07.000"' in content

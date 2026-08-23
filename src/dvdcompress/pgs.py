@@ -257,6 +257,8 @@ def convert_pgs_to_spumux_xml(
     prefix: str = "pgs_sub",
     tv_standard: TVStandard = TVStandard.NTSC,
     aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9,
+    pts_offset: float = 0.0,
+    max_duration_sec: Optional[float] = None,
 ) -> Optional[str]:
     """Convert a Blu-ray PGS .sup subtitle stream to scaled DVD subpicture PNGs and spumux XML.
 
@@ -266,6 +268,8 @@ def convert_pgs_to_spumux_xml(
         prefix: Filename prefix for generated PNG images.
         tv_standard: NTSC (720x480) or PAL (720x576).
         aspect_ratio: 16:9 widescreen or 4:3.
+        pts_offset: Timestamp offset in seconds to subtract (used for preview seek normalization).
+        max_duration_sec: Maximum duration in seconds for filtering preview events.
 
     Returns:
         Path to the generated spumux XML file, or None if no subtitles were found.
@@ -286,6 +290,22 @@ def convert_pgs_to_spumux_xml(
     for idx, item in enumerate(items):
         if not item.objects:
             continue
+
+        # Adjust start and end times by pts_offset (vital for preview clips and stream alignment)
+        start_s = item.start_pts - pts_offset
+        end_s = item.end_pts - pts_offset
+
+        if max_duration_sec is not None:
+            if end_s <= 0.0 or start_s >= max_duration_sec:
+                continue
+            start_s = max(0.0, start_s)
+            end_s = min(max_duration_sec, end_s)
+        else:
+            if end_s <= 0.0:
+                continue
+            start_s = max(0.0, start_s)
+
+        end_s = max(start_s + 0.5, end_s)
 
         src_w = max(1, item.canvas_width)
         src_h = max(1, item.canvas_height)
@@ -352,9 +372,6 @@ def convert_pgs_to_spumux_xml(
             resized_img.save(png_path, "PNG")
 
         # Format start and end timestamps in HH:MM:SS.mmm format for spumux
-        start_s = max(0.0, item.start_pts)
-        end_s = max(start_s + 0.5, item.end_pts)
-
         sh = int(start_s // 3600)
         sm = int((start_s % 3600) // 60)
         ss = start_s % 60

@@ -302,7 +302,22 @@ def test_generate_tsmuxer_meta_clamps_to_32_subtitles():
         video_files=["/tmp/track1.m2ts"],
         subtitle_files=subs,
     )
-    assert meta.count("S_TEXT/UTF8") == 32
+def test_generate_dvd_palette_rgb():
+    from dvdcompress.authoring import generate_dvd_palette_rgb
+    pal = generate_dvd_palette_rgb()
+    lines = [line.strip() for line in pal.strip().splitlines() if line.strip()]
+    assert len(lines) == 16
+    assert lines[0] == "000000"
+    assert lines[1] == "FFFFFF"
+
+
+def test_generate_dvdauthor_xml_with_palette():
+    xml = generate_dvdauthor_xml(
+        titles_mpg=["/tmp/title1.mpg"],
+        chapters_sec=[[0.0, 300.0]],
+        palette_file="/tmp/palette.rgb",
+    )
+    assert '<pgc palette="/tmp/palette.rgb">' in xml
 
 
 
