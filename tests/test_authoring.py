@@ -17,7 +17,7 @@ def test_dvdauthor_xml_single_title_autoplay():
         menu_mode=MenuMode.AUTOPLAY,
         tv_standard=TVStandard.NTSC,
     )
-    assert '<dvdauthor dest="VIDEO_TS">' in xml
+    assert 'dest="VIDEO_TS"' in xml
     assert "<vob file=\"/tmp/title1.mpg\"" in xml
     assert "chapters=\"00:00:00.000,00:05:00.000,00:10:00.000\"" in xml
     assert 'format="ntsc"' in xml
@@ -54,13 +54,15 @@ def test_dvdauthor_xml_with_title_menu_single_title():
         menu_vob="/tmp/menu.mpg",
         tv_standard=TVStandard.NTSC,
     )
-    assert '<dvdauthor dest="VIDEO_TS">' in xml
+    assert '<dvdauthor dest="VIDEO_TS" jumppad="1">' in xml
     assert "<vmgm>" in xml
     assert "<menus>" in xml
     assert '<pgc entry="title">' in xml
     assert '<vob file="/tmp/menu.mpg" pause="inf" />' in xml
     assert "<button name=\"1\">jump title 1;</button>" in xml
     assert "<post>jump cell 1;</post>" in xml
+    assert '<pgc entry="root">' in xml
+    assert "<pre>jump vmgm menu entry title;</pre>" in xml
     assert "<post>call vmgm menu entry title;</post>" in xml
 
 
@@ -72,10 +74,13 @@ def test_dvdauthor_xml_with_title_menu_multi_titles():
         menu_vob="/tmp/menu.mpg",
         tv_standard=TVStandard.PAL,
     )
+    assert '<dvdauthor dest="VIDEO_TS" jumppad="1">' in xml
     assert '<vob file="/tmp/menu.mpg" pause="inf" />' in xml
     assert "<button name=\"1\">jump title 1;</button>" in xml
     assert "<button name=\"2\">jump title 2;</button>" in xml
     assert "<button name=\"3\">jump title 3;</button>" in xml
+    assert '<pgc entry="root">' in xml
+    assert "<pre>jump vmgm menu entry title;</pre>" in xml
     assert xml.count("<post>call vmgm menu entry title;</post>") == 3
 
 
