@@ -31,9 +31,10 @@ def test_api_health():
 
 
 def test_api_version():
+    from dvdcompress import __version__
     res = client.get("/api/version")
     assert res.status_code == 200
-    assert res.json()["version"] == "1.0.6"
+    assert res.json()["version"] == __version__
 
 
 def test_api_files_nonexistent_and_permission_error():

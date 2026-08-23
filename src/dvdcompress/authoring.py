@@ -156,15 +156,15 @@ def generate_dvd_palette_rgb() -> str:
     """Generate standard 16-color RGB palette for DVD-Video subpictures and menus."""
     palette_colors = [
         "000000",  # 0: Transparent background / dark outline
-        "FFFFFF",  # 1: White text fill
+        "FFFFFF",  # 1: White subtitle / text fill
         "101010",  # 2: Dark shadow
         "808080",  # 3: Gray anti-aliasing
-        "FFFF00",  # 4: Yellow text
-        "0000FF",  # 5: Blue
-        "FF0000",  # 6: Red
-        "00FF00",  # 7: Green
-        "00FFFF",  # 8: Cyan
-        "FF00FF",  # 9: Magenta
+        "FFFF00",  # 4: Yellow subtitle text
+        "38BDF8",  # 5: Menu button highlight (Sky Blue: rgb(56, 189, 248))
+        "F59E0B",  # 6: Menu button select fill (Amber: rgb(245, 158, 11))
+        "FBBF24",  # 7: Menu button select outline (Bright Amber: rgb(251, 191, 36))
+        "3B82F6",  # 8: Menu primary accent badge (Blue: rgb(59, 130, 246))
+        "1E293B",  # 9: Menu card dark slate backdrop (rgb(30, 41, 59))
         "E0E0E0",  # 10: Light Gray
         "A0A0A0",  # 11: Gray
         "606060",  # 12: Dim Gray

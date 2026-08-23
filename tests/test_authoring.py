@@ -307,8 +307,13 @@ def test_generate_dvd_palette_rgb():
     pal = generate_dvd_palette_rgb()
     lines = [line.strip() for line in pal.strip().splitlines() if line.strip()]
     assert len(lines) == 16
-    assert lines[0] == "000000"
-    assert lines[1] == "FFFFFF"
+    assert lines[0] == "000000"  # Transparent background / outline
+    assert lines[1] == "FFFFFF"  # White text fill
+    assert lines[4] == "FFFF00"  # Yellow subtitle text
+    assert lines[5] == "38BDF8"  # Menu button highlight (Sky Blue)
+    assert lines[6] == "F59E0B"  # Menu button select fill (Amber)
+    assert lines[7] == "FBBF24"  # Menu button select outline (Bright Amber)
+    assert lines[8] == "3B82F6"  # Menu primary badge accent (Blue)
 
 
 def test_generate_dvdauthor_xml_with_palette():
@@ -318,6 +323,20 @@ def test_generate_dvdauthor_xml_with_palette():
         palette_file="/tmp/palette.rgb",
     )
     assert '<pgc palette="/tmp/palette.rgb">' in xml
+
+
+def test_generate_dvdauthor_xml_with_menu_and_palette():
+    xml = generate_dvdauthor_xml(
+        titles_mpg=["/tmp/title1.mpg", "/tmp/title2.mpg"],
+        chapters_sec=[[0.0, 300.0], [0.0, 600.0]],
+        menu_mode=MenuMode.MENU,
+        menu_vob="/tmp/menu.mpg",
+        palette_file="/tmp/palette.rgb",
+    )
+    assert '<pgc entry="title" palette="/tmp/palette.rgb">' in xml
+    assert '<vob file="/tmp/menu.mpg" pause="inf" />' in xml
+    assert '<pgc palette="/tmp/palette.rgb">' in xml
+
 
 
 
