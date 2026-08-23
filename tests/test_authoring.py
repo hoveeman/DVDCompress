@@ -46,6 +46,39 @@ def test_dvdauthor_xml_empty_chapters():
     assert "chapters=\"00:00:00.000\"" in xml
 
 
+def test_dvdauthor_xml_with_title_menu_single_title():
+    xml = generate_dvdauthor_xml(
+        titles_mpg=["/tmp/title1.mpg"],
+        chapters_sec=[[0.0, 300.0]],
+        menu_mode=MenuMode.MENU,
+        menu_vob="/tmp/menu.mpg",
+        tv_standard=TVStandard.NTSC,
+    )
+    assert '<dvdauthor dest="VIDEO_TS">' in xml
+    assert "<vmgm>" in xml
+    assert "<menus>" in xml
+    assert '<pgc entry="title">' in xml
+    assert '<vob file="/tmp/menu.mpg" pause="inf" />' in xml
+    assert "<button name=\"1\">jump title 1;</button>" in xml
+    assert "<post>jump cell 1;</post>" in xml
+    assert "<post>call vmgm menu entry title;</post>" in xml
+
+
+def test_dvdauthor_xml_with_title_menu_multi_titles():
+    xml = generate_dvdauthor_xml(
+        titles_mpg=["/tmp/ep1.mpg", "/tmp/ep2.mpg", "/tmp/ep3.mpg"],
+        chapters_sec=[[0.0], [0.0], [0.0]],
+        menu_mode=MenuMode.MENU,
+        menu_vob="/tmp/menu.mpg",
+        tv_standard=TVStandard.PAL,
+    )
+    assert '<vob file="/tmp/menu.mpg" pause="inf" />' in xml
+    assert "<button name=\"1\">jump title 1;</button>" in xml
+    assert "<button name=\"2\">jump title 2;</button>" in xml
+    assert "<button name=\"3\">jump title 3;</button>" in xml
+    assert xml.count("<post>call vmgm menu entry title;</post>") == 3
+
+
 def test_generate_tsmuxer_meta():
     meta = generate_tsmuxer_meta(["/tmp/track1.m2ts", "/tmp/track2.m2ts"])
     assert "MUXOPT --no-pcr-on-video-pid --new-audio-pes --blu-ray --vbr --auto-chapters=5" in meta

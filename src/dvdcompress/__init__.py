@@ -25,6 +25,14 @@ from dvdcompress.authoring import (
     get_spumux_font_path,
     format_chapter_time,
 )
+from dvdcompress.menu import (
+    MenuButton,
+    get_menu_font,
+    generate_dvd_menu_assets,
+    build_menu_video_command,
+    generate_menu_spumux_xml,
+    build_spumux_menu_command,
+)
 from dvdcompress.iso import (
     build_genisoimage_command,
     build_xorriso_dvd_command,
@@ -70,6 +78,12 @@ __all__ = [
     "build_spumux_pipeline_command",
     "get_spumux_font_path",
     "format_chapter_time",
+    "MenuButton",
+    "get_menu_font",
+    "generate_dvd_menu_assets",
+    "build_menu_video_command",
+    "generate_menu_spumux_xml",
+    "build_spumux_menu_command",
     "build_genisoimage_command",
     "build_xorriso_dvd_command",
     "build_dvd_iso_command",

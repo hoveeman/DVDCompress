@@ -18,6 +18,12 @@ from dvdcompress.authoring import (
     generate_spumux_xml,
     generate_tsmuxer_meta,
 )
+from dvdcompress.menu import (
+    build_menu_video_command,
+    build_spumux_menu_command,
+    generate_dvd_menu_assets,
+    generate_menu_spumux_xml,
+)
 from dvdcompress.burner import build_burn_command, parse_burn_progress_line
 from dvdcompress.layer_break import (
     calculate_dvd9_layer_break,
@@ -848,6 +854,93 @@ class JobManager:
 
                         transcoded_files[t_idx] = curr_mpg
 
+                # Generate interactive DVD Title Menu if requested
+                menu_vob_path = None
+                if job.menu_mode == MenuMode.MENU:
+                    try:
+                        self.log(job_id, f"Generating interactive DVD Title Menu for {len(media_infos)} title(s)...")
+                        title_items = []
+                        for t_idx, info in enumerate(media_infos):
+                            clean_name = os.path.splitext(info.filename)[0].replace("_", " ").strip()
+                            dur_s = int(info.duration_sec)
+                            h, m = divmod(dur_s, 3600)
+                            m, s = divmod(m, 60)
+                            dur_str = f"{h:02d}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
+                            title_items.append({"name": clean_name or f"Title {t_idx+1}", "duration": dur_str})
+
+                        bg_p, hl_p, sel_p, buttons = generate_dvd_menu_assets(
+                            titles=title_items,
+                            disc_label=job.output_name or "DVD_VIDEO",
+                            tv_standard=job.tv_standard,
+                            aspect_ratio=job.aspect_ratio,
+                            output_dir=work_dir,
+                        )
+
+                        # Transcode menu backdrop to MPEG-2 stream
+                        raw_menu_mpg = os.path.join(work_dir, "menu_raw.mpg")
+                        menu_ff_cmd = build_menu_video_command(
+                            bg_image_path=bg_p,
+                            output_mpg_path=raw_menu_mpg,
+                            tv_standard=job.tv_standard,
+                            aspect_ratio=job.aspect_ratio,
+                            duration_sec=1.0,
+                        )
+                        menu_ff_proc = await asyncio.create_subprocess_exec(
+                            *menu_ff_cmd,
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE,
+                        )
+                        current_process = menu_ff_proc
+                        self.active_processes[job_id] = menu_ff_proc
+                        _, menu_ff_err = await menu_ff_proc.communicate()
+                        current_process = None
+                        if job_id in self.active_processes:
+                            del self.active_processes[job_id]
+
+                        if menu_ff_proc.returncode == 0 and os.path.exists(raw_menu_mpg):
+                            # Generate menu spumux XML
+                            spu_menu_xml = generate_menu_spumux_xml(
+                                highlight_path=hl_p,
+                                select_path=sel_p,
+                                buttons=buttons,
+                                tv_standard=job.tv_standard,
+                            )
+                            spu_menu_xml_path = os.path.join(work_dir, "spumux_menu.xml")
+                            with open(spu_menu_xml_path, "w", encoding="utf-8") as smf:
+                                smf.write(spu_menu_xml)
+
+                            # Multiplex menu subpictures with spumux
+                            muxed_menu_mpg = os.path.join(work_dir, "menu.mpg")
+                            spu_menu_cmd = build_spumux_menu_command(
+                                input_mpg_path=raw_menu_mpg,
+                                output_mpg_path=muxed_menu_mpg,
+                                xml_path=spu_menu_xml_path,
+                            )
+                            spu_m_proc = await asyncio.create_subprocess_shell(
+                                spu_menu_cmd,
+                                stdout=asyncio.subprocess.PIPE,
+                                stderr=asyncio.subprocess.PIPE,
+                                env=dvd_env,
+                            )
+                            current_process = spu_m_proc
+                            self.active_processes[job_id] = spu_m_proc
+                            _, spu_m_err = await spu_m_proc.communicate()
+                            current_process = None
+                            if job_id in self.active_processes:
+                                del self.active_processes[job_id]
+
+                            if spu_m_proc.returncode == 0 and os.path.exists(muxed_menu_mpg) and os.path.getsize(muxed_menu_mpg) > 0:
+                                menu_vob_path = muxed_menu_mpg
+                                self.log(job_id, f"Successfully created interactive Title Menu with {len(buttons)} navigation button(s).")
+                            else:
+                                err_snip = spu_m_err.decode(errors="replace").strip()[-200:]
+                                self.log(job_id, f"Warning: spumux menu multiplexing failed ({err_snip}); falling back to autoplay mode.", "warning")
+                        else:
+                            err_snip = menu_ff_err.decode(errors="replace").strip()[-200:]
+                            self.log(job_id, f"Warning: Menu background transcoding failed ({err_snip}); falling back to autoplay mode.", "warning")
+                    except Exception as e:
+                        self.log(job_id, f"Warning: DVD menu creation encountered an exception: {e}; falling back to autoplay mode.", "warning")
+
                 # Collect subpicture track languages for the authored titleset
                 dvd_sub_langs = []
                 for title_subs in extracted_subtitles_by_title:
@@ -861,6 +954,8 @@ class JobManager:
                     menu_mode=job.menu_mode,
                     tv_standard=job.tv_standard,
                     subtitles_lang=dvd_sub_langs if dvd_sub_langs else None,
+                    menu_vob=menu_vob_path,
+                    aspect_ratio=job.aspect_ratio,
                 )
                 xml_path = os.path.join(work_dir, "dvdauthor.xml")
                 with open(xml_path, "w", encoding="utf-8") as xf:

@@ -486,6 +486,8 @@ button, input, select, textarea {
   border-radius: var(--radius-md);
   max-height: 280px;
   overflow-y: auto;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   background: var(--bg-input);
 }
 
@@ -1426,8 +1428,15 @@ input:checked + .slider:before {
 
 
 /* Table for Job History */
+.jobs-table-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .jobs-table {
   width: 100%;
+  min-width: 720px;
   border-collapse: collapse;
   text-align: left;
   font-size: 0.825rem;
@@ -1612,9 +1621,40 @@ input:checked + .slider:before {
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
+  .app-header {
+    padding: 0.75rem 1rem;
+  }
   .header-container {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .app-main {
+    padding: 1rem 0.75rem;
+  }
+  .app-nav {
+    padding: 0 1rem;
+  }
+  .nav-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .nav-container::-webkit-scrollbar {
+    display: none;
+  }
+  .nav-tab {
+    flex-shrink: 0;
+  }
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  .job-history-header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 0.5rem;
   }
   .telemetry-section {
     width: 100%;
@@ -1629,4 +1669,5 @@ input:checked + .slider:before {
     display: none;
   }
 }
+
 

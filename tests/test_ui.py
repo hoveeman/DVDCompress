@@ -291,6 +291,25 @@ def test_job_history_retry_and_edit_ui():
     assert "editJobInAuthoring" in js
 
 
+def test_job_history_table_responsive_container():
+    # Verify index.html wraps jobs-history-table in a responsive scroll container
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    html = res_html.text
+    assert 'class="jobs-table-container"' in html
+    assert 'id="jobs-history-table"' in html
+
+    # Verify CSS contains overflow-x scrolling and min-width for table
+    res_css = client.get("/css/style.css")
+    assert res_css.status_code == 200
+    css = res_css.text
+    assert ".jobs-table-container" in css
+    assert "overflow-x: auto" in css
+    assert "-webkit-overflow-scrolling: touch" in css
+    assert ".jobs-table" in css
+
+
+
 
 
 

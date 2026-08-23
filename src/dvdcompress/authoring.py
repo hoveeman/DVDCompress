@@ -158,18 +158,43 @@ def generate_dvdauthor_xml(
     menu_mode: MenuMode = MenuMode.AUTOPLAY,
     tv_standard: TVStandard = TVStandard.NTSC,
     subtitles_lang: Optional[List[str]] = None,
+    menu_vob: Optional[str] = None,
+    aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9,
 ) -> str:
     """Generate a standard dvdauthor.xml structure for authoring DVD-Video."""
     video_format = "ntsc" if tv_standard in (TVStandard.NTSC, TVStandard.AUTO) else "pal"
+    aspect_attr = 'aspect="16:9" widescreen="nopanscan"' if aspect_ratio == AspectRatio.RATIO_16_9 else 'aspect="4:3"'
 
-    xml_lines = [
-        '<dvdauthor dest="VIDEO_TS">',
-        '  <vmgm />',
+    has_menu = (menu_mode == MenuMode.MENU and menu_vob is not None)
+
+    xml_lines = ['<dvdauthor dest="VIDEO_TS">']
+
+    if has_menu:
+        xml_lines.extend([
+            '  <vmgm>',
+            '    <menus>',
+            f'      <video format="{video_format}" {aspect_attr} />',
+            '      <audio format="ac3" channels="2" />',
+            '      <pgc entry="title">',
+            f'        <vob file="{menu_vob}" pause="inf" />',
+        ])
+        for idx in range(len(titles_mpg)):
+            xml_lines.append(f'        <button name="{idx + 1}">jump title {idx + 1};</button>')
+        xml_lines.extend([
+            '        <post>jump cell 1;</post>',
+            '      </pgc>',
+            '    </menus>',
+            '  </vmgm>',
+        ])
+    else:
+        xml_lines.append('  <vmgm />')
+
+    xml_lines.extend([
         '  <titleset>',
         '    <titles>',
-        f'      <video format="{video_format}" aspect="16:9" widescreen="nopanscan" />',
+        f'      <video format="{video_format}" {aspect_attr} />',
         '      <audio format="ac3" channels="2" />',
-    ]
+    ])
 
     if subtitles_lang:
         for lang in subtitles_lang[:MAX_DVD_SUBPICTURE_STREAMS]:
@@ -185,11 +210,15 @@ def generate_dvdauthor_xml(
         chap_str = ",".join([format_chapter_time(c) for c in chaps])
         xml_lines.append("      <pgc>")
         xml_lines.append(f'        <vob file="{mpg}" chapters="{chap_str}" />')
-        # Play next title or loop back to title 1 within the same titleset
-        if idx < len(titles_mpg) - 1:
-            xml_lines.append(f"        <post>jump pgc {idx + 2};</post>")
+
+        if has_menu:
+            xml_lines.append("        <post>call vmgm menu entry title;</post>")
         else:
-            xml_lines.append("        <post>jump pgc 1;</post>")
+            # Play next title or loop back to title 1 within the same titleset
+            if idx < len(titles_mpg) - 1:
+                xml_lines.append(f"        <post>jump pgc {idx + 2};</post>")
+            else:
+                xml_lines.append("        <post>jump pgc 1;</post>")
         xml_lines.append("      </pgc>")
 
     xml_lines.extend([
