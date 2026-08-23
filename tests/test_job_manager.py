@@ -1313,5 +1313,148 @@ async def test_job_pipeline_dvd_iso_creation_with_udf_fallback_on_genisoimage_er
     assert len(xorriso_udf_invocations) == 0
 
 
+@pytest.mark.asyncio
+async def test_job_pipeline_dvd_pgs_bitmap_subtitle_conversion(tmp_path, monkeypatch):
+    """Verify that a video with only Blu-ray PGS subtitles (e.g., The Parent Trap) converts and muxes to DVD."""
+    manager = JobManager()
+    manager.jobs.clear()
+    media_file = str(tmp_path / "The_Parent_Trap.mkv")
+    with open(media_file, "w") as f:
+        f.write("dummy_video_bytes")
+
+    output_dir = str(tmp_path / "output")
+    scratch_dir = str(tmp_path / "scratch")
+    os.makedirs(output_dir, exist_ok=True)
+
+    fake_media_info = MediaInfo(
+        path=media_file,
+        filename="The_Parent_Trap.mkv",
+        duration_sec=7686.0,
+        width=1920,
+        height=1080,
+        aspect_ratio="16:9",
+        frame_rate=23.976,
+        video_codec="h264",
+        audio_streams=[AudioStreamInfo(index=1, codec_name="dts", channels=6)],
+        subtitle_streams=[
+            SubtitleStreamInfo(index=2, codec_name="hdmv_pgs_subtitle", language="eng", title="English (SDH)"),
+        ],
+        size_bytes=35000000000,
+    )
+
+    monkeypatch.setattr("dvdcompress.job_manager.probe_media_file", AsyncMock(return_value=fake_media_info))
+
+    executed_cmds = []
+    executed_shells = []
+
+    class FakeProc:
+        returncode = 0
+        def __init__(self, cmd=None): self.cmd = cmd
+        async def wait(self): return 0
+        @property
+        def stderr(self):
+            class Stream:
+                async def read(self, n): return b""
+            return Stream()
+        def send_signal(self, sig): pass
+        def kill(self): pass
+        async def communicate(self): return (b"", b"")
+
+    captured_dvdauthor_xml = []
+
+    async def fake_exec(*cmd, **kwargs):
+        executed_cmds.append(list(cmd))
+        # If extraction command, write a small dummy .sup file
+        if any(arg.endswith(".sup") for arg in cmd):
+            sup_target = cmd[-1]
+            os.makedirs(os.path.dirname(os.path.abspath(sup_target)), exist_ok=True)
+            with open(sup_target, "wb") as f:
+                f.write(b"MOCK_SUP_BYTES")
+        if "dvdauthor" in cmd:
+            xml_idx = cmd.index("-x")
+            with open(cmd[xml_idx + 1], "r", encoding="utf-8") as f:
+                captured_dvdauthor_xml.append(f.read())
+            author_dir = cmd[cmd.index("-o") + 1]
+            v_ts = os.path.join(author_dir, "VIDEO_TS")
+            os.makedirs(v_ts, exist_ok=True)
+            with open(os.path.join(v_ts, "VIDEO_TS.IFO"), "wb") as f:
+                f.write(b"DVDVIDEO-VMG")
+        if "-o" in cmd:
+            o_idx = cmd.index("-o")
+            iso_target = cmd[o_idx + 1]
+            if iso_target.endswith(".iso"):
+                os.makedirs(os.path.dirname(os.path.abspath(iso_target)), exist_ok=True)
+                with open(iso_target, "w") as f:
+                    f.write("ISO_BYTES")
+        return FakeProc(cmd)
+
+    async def fake_shell(cmd_str, **kwargs):
+        executed_shells.append(cmd_str)
+        if ">" in cmd_str:
+            out_target = cmd_str.split(">")[-1].strip().strip("'\"")
+            os.makedirs(os.path.dirname(os.path.abspath(out_target)), exist_ok=True)
+            with open(out_target, "wb") as f:
+                f.write(b"MOCK_SUBBED_MPG")
+        class FakeSpu:
+            returncode = 0
+            def __init__(self):
+                class S:
+                    def __init__(self):
+                        self.chunks = [b"INFO: 1000000 bytes of data written\r", b""]
+                        self.idx = 0
+                    async def read(self, n):
+                        if self.idx < len(self.chunks):
+                            c = self.chunks[self.idx]
+                            self.idx += 1
+                            return c
+                        return b""
+                self.stderr = S()
+            async def wait(self): return 0
+            def send_signal(self, sig): pass
+            def kill(self): pass
+            async def communicate(self): return (b"", b"")
+        return FakeSpu()
+
+    # Mock convert_pgs_to_spumux_xml to generate a mock spumux XML
+    def fake_convert_pgs(sup_path, output_dir, prefix, tv_standard, aspect_ratio):
+        xml_p = os.path.join(output_dir, f"{prefix}_spumux.xml")
+        with open(xml_p, "w") as f:
+            f.write(f'<subpictures format="NTSC"><stream><spu start="00:00:01.000" end="00:00:03.000" image="{prefix}_0000.png" xoffset="100" yoffset="300" /></stream></subpictures>')
+        return xml_p
+
+    monkeypatch.setattr("dvdcompress.job_manager.convert_pgs_to_spumux_xml", fake_convert_pgs)
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+    monkeypatch.setattr("asyncio.create_subprocess_shell", fake_shell)
+
+    job_id = manager.create_job(
+        input_files=[media_file],
+        disc_type=DiscType.DVD9,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="Parent_Trap_DVD",
+    )
+
+    await manager.start_job(job_id, scratch_dir=scratch_dir, output_dir=output_dir)
+    await manager.active_tasks[job_id]
+
+    job = manager.get_job(job_id)
+    assert job.stage == JobStage.COMPLETED
+
+    # Verify PGS extraction was executed
+    sub_extract_cmds = [c for c in executed_cmds if any(arg.endswith(".sup") for arg in c)]
+    assert len(sub_extract_cmds) == 1
+    assert sub_extract_cmds[0] == ["ffmpeg", "-y", "-i", media_file, "-map", "0:2", "-c:s", "copy", os.path.join(scratch_dir, job_id, "title_1_sub_0.sup")]
+
+    # Verify spumux pipeline was executed for the PGS subtitle track
+    spumux_cmds = [c for c in executed_shells if "spumux" in c]
+    assert len(spumux_cmds) == 1
+    assert "spumux -m dvd -s 0" in spumux_cmds[0]
+    assert "pgs_t1_s0_spumux.xml" in spumux_cmds[0]
+
+    # Verify dvdauthor XML included the english subpicture language
+    assert len(captured_dvdauthor_xml) == 1
+    assert '<subpicture lang="en"' in captured_dvdauthor_xml[0]
+
+
+
 
 

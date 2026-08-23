@@ -1,0 +1,381 @@
+"""Blu-ray PGS (Presentation Graphic Stream) subtitle parser and DVD subpicture converter."""
+
+import os
+import struct
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
+from PIL import Image
+from dvdcompress.models import AspectRatio, TVStandard
+
+
+@dataclass
+class PGSObject:
+    """Represents a decoded subtitle graphical object."""
+    object_id: int
+    x: int
+    y: int
+    width: int
+    height: int
+    image: Image.Image
+
+
+@dataclass
+class PGSSubtitleItem:
+    """Represents a timed subtitle event with one or more graphical objects."""
+    start_pts: float  # in seconds
+    end_pts: float    # in seconds
+    canvas_width: int
+    canvas_height: int
+    objects: List[PGSObject] = field(default_factory=list)
+
+
+def ycbcr_to_rgba(y: int, cb: int, cr: int, a: int) -> Tuple[int, int, int, int]:
+    """Convert ITU-R YCbCr with alpha to standard 8-bit RGBA."""
+    r = max(0, min(255, int(round(y + 1.402 * (cr - 128)))))
+    g = max(0, min(255, int(round(y - 0.344136 * (cb - 128) - 0.714136 * (cr - 128)))))
+    b = max(0, min(255, int(round(y + 1.772 * (cb - 128)))))
+    return (r, g, b, a)
+
+
+def decode_pgs_rle(rle_data: bytes, width: int, height: int) -> bytearray:
+    """Decode PGS run-length encoded bitmap stream into a raw palette index buffer."""
+    total_pixels = width * height
+    pixels = bytearray(total_pixels)
+    out_idx = 0
+    in_idx = 0
+    n = len(rle_data)
+
+    while in_idx < n and out_idx < total_pixels:
+        b1 = rle_data[in_idx]
+        in_idx += 1
+        if b1 != 0:
+            pixels[out_idx] = b1
+            out_idx += 1
+        else:
+            if in_idx >= n:
+                break
+            b2 = rle_data[in_idx]
+            in_idx += 1
+            if b2 == 0:
+                # End of line: advance to next row boundary
+                rem = out_idx % width
+                if rem != 0:
+                    out_idx += (width - rem)
+            elif (b2 & 0xC0) == 0x00:
+                # 1-byte run of color 0
+                run_len = b2 & 0x3F
+                out_idx += run_len
+            elif (b2 & 0xC0) == 0x40:
+                # 2-byte run of color 0
+                if in_idx >= n:
+                    break
+                b3 = rle_data[in_idx]
+                in_idx += 1
+                run_len = ((b2 & 0x3F) << 8) | b3
+                out_idx += run_len
+            elif (b2 & 0xC0) == 0x80:
+                # 2-byte run of color b3
+                if in_idx >= n:
+                    break
+                b3 = rle_data[in_idx]
+                in_idx += 1
+                run_len = b2 & 0x3F
+                end_pos = min(total_pixels, out_idx + run_len)
+                pixels[out_idx:end_pos] = bytes([b3]) * (end_pos - out_idx)
+                out_idx += run_len
+            elif (b2 & 0xC0) == 0xC0:
+                # 3-byte run of color b4
+                if in_idx + 1 >= n:
+                    break
+                b3 = rle_data[in_idx]
+                b4 = rle_data[in_idx + 1]
+                in_idx += 2
+                run_len = ((b2 & 0x3F) << 8) | b3
+                end_pos = min(total_pixels, out_idx + run_len)
+                pixels[out_idx:end_pos] = bytes([b4]) * (end_pos - out_idx)
+                out_idx += run_len
+
+    return pixels
+
+
+def parse_pgs_sup(sup_path: str) -> List[PGSSubtitleItem]:
+    """Parse a Blu-ray PGS .sup file and extract timed subtitle items with RGBA images.
+
+    Args:
+        sup_path: Path to the .sup binary file.
+
+    Returns:
+        List of parsed PGSSubtitleItem objects.
+    """
+    if not os.path.exists(sup_path) or os.path.getsize(sup_path) == 0:
+        return []
+
+    try:
+        with open(sup_path, "rb") as f:
+            data = f.read()
+    except Exception:
+        return []
+
+    offset = 0
+    n = len(data)
+    palettes: Dict[int, Dict[int, Tuple[int, int, int, int]]] = {}
+    objects: Dict[int, Dict[str, Any]] = {}
+    items: List[PGSSubtitleItem] = []
+    current_ds: Optional[Dict[str, Any]] = None
+
+    while offset + 13 <= n:
+        if data[offset:offset + 2] != b"PG":
+            offset += 1
+            continue
+
+        try:
+            pts, dts, seg_type, length = struct.unpack(">IIBH", data[offset + 2:offset + 13])
+        except struct.error:
+            break
+
+        payload = data[offset + 13:offset + 13 + length]
+        offset += 13 + length
+        pts_sec = pts / 90000.0
+
+        if seg_type == 0x14:  # Palette Definition Segment (PDS)
+            if len(payload) >= 2:
+                pal_id = payload[0]
+                pal: Dict[int, Tuple[int, int, int, int]] = {}
+                for p_idx in range(2, len(payload), 5):
+                    if p_idx + 5 <= len(payload):
+                        e_id, y, cr, cb, a = payload[p_idx:p_idx + 5]
+                        pal[e_id] = ycbcr_to_rgba(y, cb, cr, a)
+                palettes[pal_id] = pal
+
+        elif seg_type == 0x15:  # Object Definition Segment (ODS)
+            if len(payload) >= 4:
+                obj_id, obj_ver, seq_desc = struct.unpack(">HBB", payload[:4])
+                if seq_desc & 0x80:  # First or only segment
+                    if len(payload) >= 11:
+                        obj_w, obj_h = struct.unpack(">HH", payload[7:11])
+                        rle_bytes = payload[11:]
+                        objects[obj_id] = {
+                            "width": obj_w,
+                            "height": obj_h,
+                            "rle": bytearray(rle_bytes),
+                        }
+                else:
+                    if obj_id in objects:
+                        objects[obj_id]["rle"].extend(payload[4:])
+
+        elif seg_type == 0x16:  # Presentation Composition Segment (PCS)
+            if len(payload) >= 11:
+                v_w, v_h, fps, comp_num, comp_state, pal_upd, pal_id, num_objs = struct.unpack(">HHBHBBBB", payload[:11])
+                obj_entries = []
+                p_offset = 11
+                for _ in range(num_objs):
+                    if p_offset + 8 <= len(payload):
+                        o_id, win_id, crop_flag, o_x, o_y = struct.unpack(">HBBHH", payload[p_offset:p_offset + 8])
+                        p_offset += 8
+                        if crop_flag & 0x40 and p_offset + 8 <= len(payload):
+                            p_offset += 8
+                        obj_entries.append({"id": o_id, "x": o_x, "y": o_y})
+
+                if num_objs > 0:
+                    # If we had a previously active unclosed display set, close it now
+                    if current_ds is not None:
+                        current_ds["end_pts"] = pts_sec
+                        _finalize_display_set(current_ds, palettes, objects, items)
+                    current_ds = {
+                        "start_pts": pts_sec,
+                        "v_w": v_w or 1920,
+                        "v_h": v_h or 1080,
+                        "pal_id": pal_id,
+                        "obj_entries": obj_entries,
+                    }
+                else:
+                    # Clear screen (end of subtitle display)
+                    if current_ds is not None:
+                        current_ds["end_pts"] = pts_sec
+                        _finalize_display_set(current_ds, palettes, objects, items)
+                        current_ds = None
+
+    # Finalize any trailing open display set
+    if current_ds is not None:
+        current_ds["end_pts"] = current_ds["start_pts"] + 4.0
+        _finalize_display_set(current_ds, palettes, objects, items)
+
+    return items
+
+
+def _finalize_display_set(
+    ds: Dict[str, Any],
+    palettes: Dict[int, Dict[int, Tuple[int, int, int, int]]],
+    objects: Dict[int, Dict[str, Any]],
+    items: List[PGSSubtitleItem],
+) -> None:
+    """Helper to decode and attach PGSSubtitleItem to the items list."""
+    start_pts = ds.get("start_pts", 0.0)
+    end_pts = ds.get("end_pts", start_pts + 3.0)
+    if end_pts <= start_pts:
+        end_pts = start_pts + 2.0
+
+    pal_id = ds.get("pal_id", 0)
+    palette = palettes.get(pal_id, {})
+    v_w = ds.get("v_w", 1920)
+    v_h = ds.get("v_h", 1080)
+
+    decoded_objs: List[PGSObject] = []
+    for entry in ds.get("obj_entries", []):
+        o_id = entry["id"]
+        if o_id in objects:
+            obj_data = objects[o_id]
+            ow = obj_data["width"]
+            oh = obj_data["height"]
+            if ow > 0 and oh > 0:
+                raw_pixels = decode_pgs_rle(obj_data["rle"], ow, oh)
+                img = Image.new("RGBA", (ow, oh))
+                rgba_buf = [palette.get(p, (0, 0, 0, 0)) for p in raw_pixels]
+                img.putdata(rgba_buf)
+                decoded_objs.append(PGSObject(
+                    object_id=o_id,
+                    x=entry["x"],
+                    y=entry["y"],
+                    width=ow,
+                    height=oh,
+                    image=img,
+                ))
+
+    if decoded_objs:
+        items.append(PGSSubtitleItem(
+            start_pts=start_pts,
+            end_pts=end_pts,
+            canvas_width=v_w,
+            canvas_height=v_h,
+            objects=decoded_objs,
+        ))
+
+
+def convert_pgs_to_spumux_xml(
+    sup_path: str,
+    output_dir: str,
+    prefix: str = "pgs_sub",
+    tv_standard: TVStandard = TVStandard.NTSC,
+    aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9,
+) -> Optional[str]:
+    """Convert a Blu-ray PGS .sup subtitle stream to scaled DVD subpicture PNGs and spumux XML.
+
+    Args:
+        sup_path: Path to the input .sup file.
+        output_dir: Directory where scaled PNGs and spumux XML will be saved.
+        prefix: Filename prefix for generated PNG images.
+        tv_standard: NTSC (720x480) or PAL (720x576).
+        aspect_ratio: 16:9 widescreen or 4:3.
+
+    Returns:
+        Path to the generated spumux XML file, or None if no subtitles were found.
+    """
+    items = parse_pgs_sup(sup_path)
+    if not items:
+        return None
+
+    is_ntsc = tv_standard in (TVStandard.NTSC, TVStandard.AUTO)
+    target_w = 720
+    target_h = 480 if is_ntsc else 576
+    fmt_str = "NTSC" if is_ntsc else "PAL"
+
+    os.makedirs(output_dir, exist_ok=True)
+    spu_lines = [f'<subpictures format="{fmt_str}">', '  <stream>']
+
+    valid_spu_count = 0
+    for idx, item in enumerate(items):
+        if not item.objects:
+            continue
+
+        src_w = max(1, item.canvas_width)
+        src_h = max(1, item.canvas_height)
+        scale_x = target_w / float(src_w)
+        scale_y = target_h / float(src_h)
+
+        # If there are multiple objects in the display set, combine them into a composite image
+        if len(item.objects) == 1:
+            obj = item.objects[0]
+            ow, oh = obj.width, obj.height
+            if ow <= 0 or oh <= 0:
+                continue
+
+            scaled_w = max(2, int(round(ow * scale_x)))
+            scaled_h = max(2, int(round(oh * scale_y)))
+            scaled_x = max(0, min(target_w - scaled_w, int(round(obj.x * scale_x))))
+            scaled_y = max(0, min(target_h - scaled_h, int(round(obj.y * scale_y))))
+
+            # Force even coordinates and dimensions for DVD MPEG-2 interlaced subpicture chroma alignment
+            scaled_x &= ~1
+            scaled_y &= ~1
+            scaled_w = max(2, (scaled_w + 1) & ~1)
+            scaled_h = max(2, (scaled_h + 1) & ~1)
+            if scaled_x + scaled_w > target_w:
+                scaled_w = target_w - scaled_x
+            if scaled_y + scaled_h > target_h:
+                scaled_h = target_h - scaled_y
+
+            resized_img = obj.image.resize((scaled_w, scaled_h), Image.Resampling.BILINEAR)
+            png_filename = f"{prefix}_{idx:04d}.png"
+            png_path = os.path.join(output_dir, png_filename)
+            resized_img.save(png_path, "PNG")
+
+        else:
+            # Multi-object display set: compute bounding box in source canvas
+            min_src_x = min(o.x for o in item.objects)
+            min_src_y = min(o.y for o in item.objects)
+            max_src_x = max(o.x + o.width for o in item.objects)
+            max_src_y = max(o.y + o.height for o in item.objects)
+            comp_src_w = max(1, max_src_x - min_src_x)
+            comp_src_h = max(1, max_src_y - min_src_y)
+
+            composite_src = Image.new("RGBA", (comp_src_w, comp_src_h), (0, 0, 0, 0))
+            for o in item.objects:
+                composite_src.paste(o.image, (o.x - min_src_x, o.y - min_src_y), o.image)
+
+            scaled_w = max(2, int(round(comp_src_w * scale_x)))
+            scaled_h = max(2, int(round(comp_src_h * scale_y)))
+            scaled_x = max(0, min(target_w - scaled_w, int(round(min_src_x * scale_x))))
+            scaled_y = max(0, min(target_h - scaled_h, int(round(min_src_y * scale_y))))
+
+            scaled_x &= ~1
+            scaled_y &= ~1
+            scaled_w = max(2, (scaled_w + 1) & ~1)
+            scaled_h = max(2, (scaled_h + 1) & ~1)
+            if scaled_x + scaled_w > target_w:
+                scaled_w = target_w - scaled_x
+            if scaled_y + scaled_h > target_h:
+                scaled_h = target_h - scaled_y
+
+            resized_img = composite_src.resize((scaled_w, scaled_h), Image.Resampling.BILINEAR)
+            png_filename = f"{prefix}_{idx:04d}.png"
+            png_path = os.path.join(output_dir, png_filename)
+            resized_img.save(png_path, "PNG")
+
+        # Format start and end timestamps in HH:MM:SS.mmm format for spumux
+        start_s = max(0.0, item.start_pts)
+        end_s = max(start_s + 0.5, item.end_pts)
+
+        sh = int(start_s // 3600)
+        sm = int((start_s % 3600) // 60)
+        ss = start_s % 60
+        start_str = f"{sh:02d}:{sm:02d}:{ss:06.3f}"
+
+        eh = int(end_s // 3600)
+        em = int((end_s % 3600) // 60)
+        es = end_s % 60
+        end_str = f"{eh:02d}:{em:02d}:{es:06.3f}"
+
+        spu_lines.append(
+            f'    <spu start="{start_str}" end="{end_str}" image="{png_path}" xoffset="{scaled_x}" yoffset="{scaled_y}" />'
+        )
+        valid_spu_count += 1
+
+    if valid_spu_count == 0:
+        return None
+
+    spu_lines.extend(["  </stream>", "</subpictures>"])
+    xml_path = os.path.join(output_dir, f"{prefix}_spumux.xml")
+    with open(xml_path, "w", encoding="utf-8") as xf:
+        xf.write("\n".join(spu_lines))
+
+    return xml_path

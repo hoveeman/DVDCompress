@@ -18,6 +18,7 @@ from dvdcompress.authoring import (
     generate_spumux_xml,
     generate_tsmuxer_meta,
 )
+from dvdcompress.pgs import convert_pgs_to_spumux_xml
 from dvdcompress.menu import (
     build_menu_video_command,
     build_spumux_menu_command,
@@ -658,9 +659,6 @@ class JobManager:
                 for s_idx, s in enumerate(target_subs):
                     lang = s.language or "eng"
                     is_bmp = (s.codec_name in ("hdmv_pgs_subtitle", "dvdsub"))
-                    if not is_bluray and is_bmp:
-                        self.log(job_id, f"Notice: Subtitle track {s.index} [{lang}] is PGS bitmap format ({s.codec_name}). For DVD-Video, text subtitle tracks (SRT/ASS/VTT) are muxed.")
-                        continue
 
                     ext = ".sup" if is_bmp else ".srt"
                     sub_out_name = f"title_{t_idx+1}_sub_{s_idx}{ext}"
@@ -756,8 +754,8 @@ class JobManager:
                 for t_idx, title_subs in enumerate(extracted_subtitles_by_title):
                     if t_idx < len(transcoded_files):
                         curr_mpg = transcoded_files[t_idx]
-                        text_subs = [sub for sub in title_subs if not sub.get("is_bitmap", False) and os.path.exists(sub.get("path", ""))]
-                        if not text_subs:
+                        valid_subs = [sub for sub in title_subs if os.path.exists(sub.get("path", ""))]
+                        if not valid_subs:
                             continue
 
                         if not os.path.exists(curr_mpg):
@@ -766,21 +764,41 @@ class JobManager:
 
                         xml_paths = []
                         track_summaries = []
-                        for s_idx, sub_info in enumerate(text_subs):
-                            spu_xml = generate_spumux_xml(
-                                srt_path=sub_info["path"],
-                                tv_standard=job.tv_standard,
-                                aspect_ratio=job.aspect_ratio,
-                            )
-                            spu_xml_path = os.path.join(work_dir, f"spumux_t{t_idx+1}_s{s_idx}.xml")
-                            with open(spu_xml_path, "w", encoding="utf-8") as sf:
-                                sf.write(spu_xml)
-                            xml_paths.append(spu_xml_path)
-                            track_summaries.append(f"[{sub_info.get('lang', 'und')}]: {sub_info.get('title') or 'Subtitles'}")
+                        for s_idx, sub_info in enumerate(valid_subs):
+                            lang = sub_info.get("lang", "und")
+                            track_name = sub_info.get("title") or "Subtitles"
+                            if sub_info.get("is_bitmap", False):
+                                self.log(job_id, f"Converting PGS bitmap subtitle track [{lang}]: {track_name} for DVD-Video...")
+                                pgs_xml_path = convert_pgs_to_spumux_xml(
+                                    sup_path=sub_info["path"],
+                                    output_dir=work_dir,
+                                    prefix=f"pgs_t{t_idx+1}_s{s_idx}",
+                                    tv_standard=job.tv_standard,
+                                    aspect_ratio=job.aspect_ratio,
+                                )
+                                if pgs_xml_path and os.path.exists(pgs_xml_path):
+                                    xml_paths.append(pgs_xml_path)
+                                    track_summaries.append(f"[{lang}]: {track_name}")
+                                else:
+                                    self.log(job_id, f"Notice: No graphic subpictures found in PGS track {s_idx+1} [{lang}], skipping.")
+                            else:
+                                spu_xml = generate_spumux_xml(
+                                    srt_path=sub_info["path"],
+                                    tv_standard=job.tv_standard,
+                                    aspect_ratio=job.aspect_ratio,
+                                )
+                                spu_xml_path = os.path.join(work_dir, f"spumux_t{t_idx+1}_s{s_idx}.xml")
+                                with open(spu_xml_path, "w", encoding="utf-8") as sf:
+                                    sf.write(spu_xml)
+                                xml_paths.append(spu_xml_path)
+                                track_summaries.append(f"[{lang}]: {track_name}")
+
+                        if not xml_paths:
+                            continue
 
                         subbed_mpg = os.path.join(work_dir, f"title_{t_idx+1}_subbed.mpg")
                         tracks_str = ", ".join(track_summaries)
-                        self.log(job_id, f"Multiplexing {len(text_subs)} DVD subtitle track(s) in streaming pipeline: {tracks_str}")
+                        self.log(job_id, f"Multiplexing {len(xml_paths)} DVD subtitle track(s) in streaming pipeline: {tracks_str}")
 
                         pipe_cmd = build_spumux_pipeline_command(curr_mpg, subbed_mpg, xml_paths)
                         total_mpg_bytes = os.path.getsize(curr_mpg) if os.path.exists(curr_mpg) else 1
@@ -850,7 +868,7 @@ class JobManager:
 
                         if spu_proc.returncode == 0 and os.path.exists(subbed_mpg) and os.path.getsize(subbed_mpg) > 0:
                             curr_mpg = subbed_mpg
-                            self.log(job_id, f"Successfully multiplexed {len(text_subs)} subtitle track(s) for title {t_idx+1}")
+                            self.log(job_id, f"Successfully multiplexed {len(xml_paths)} subtitle track(s) for title {t_idx+1}")
                         else:
                             err_snip = " | ".join(stderr_lines[-3:]) if stderr_lines else f"exit code {spu_proc.returncode}"
                             self.log(job_id, f"Warning: Subtitle pipeline failed for title {t_idx+1}: {err_snip}", "warning")
@@ -947,7 +965,7 @@ class JobManager:
                 # Collect subpicture track languages for the authored titleset
                 dvd_sub_langs = []
                 for title_subs in extracted_subtitles_by_title:
-                    valid_subs = [s for s in title_subs if not s.get("is_bitmap", False)]
+                    valid_subs = [s for s in title_subs if os.path.exists(s.get("path", ""))]
                     if len(valid_subs) > len(dvd_sub_langs):
                         dvd_sub_langs = [s["lang"] for s in valid_subs[:32]]
 
