@@ -105,10 +105,10 @@ def test_dvdauthor_xml_with_title_menu_play_next_action():
 def test_generate_tsmuxer_meta():
     meta = generate_tsmuxer_meta(["/tmp/track1.m2ts", "/tmp/track2.m2ts"])
     assert "MUXOPT --no-pcr-on-video-pid --new-audio-pes --blu-ray --vbr --auto-chapters=5" in meta
-    assert 'V_MPEG4/ISO/AVC, "/tmp/track1.m2ts", fps=23.976, insertSEI, contSPS' in meta
-    assert 'A_AC3, "/tmp/track1.m2ts"' in meta
-    assert 'V_MPEG4/ISO/AVC, "/tmp/track2.m2ts", fps=23.976, insertSEI, contSPS' in meta
-    assert 'A_AC3, "/tmp/track2.m2ts"' in meta
+    assert 'V_MPEG4/ISO/AVC, "/tmp/track1.m2ts", track=4113, fps=23.976, insertSEI, contSPS' in meta
+    assert 'A_AC3, "/tmp/track1.m2ts", track=4352' in meta
+    assert 'V_MPEG4/ISO/AVC, "/tmp/track2.m2ts", track=4113, fps=23.976, insertSEI, contSPS' in meta
+    assert 'A_AC3, "/tmp/track2.m2ts", track=4352' in meta
 
     meta_custom = generate_tsmuxer_meta(["/tmp/track1.m2ts"], chapters_sec=[0.0, 300.0, 600.0])
     assert "--custom-chapters=00:00:00.000;00:05:00.000;00:10:00.000" in meta_custom
@@ -248,8 +248,17 @@ def test_generate_tsmuxer_meta_hevc_uhd():
         video_files=["/media/uhd_remux.mkv"],
         video_codecs=["hevc"],
     )
-    assert 'V_MPEGH/ISO/HEVC, "/media/uhd_remux.mkv", fps=23.976, insertSEI, contSPS' in meta
-    assert 'A_AC3, "/media/uhd_remux.mkv"' in meta
+    assert 'V_MPEGH/ISO/HEVC, "/media/uhd_remux.mkv", track=1, fps=23.976, insertSEI, contSPS' in meta
+    assert 'A_AC3, "/media/uhd_remux.mkv", track=2' in meta
+
+
+def test_generate_tsmuxer_meta_elementary_streams():
+    meta = generate_tsmuxer_meta(
+        video_files=["/tmp/stream.264"],
+        video_codecs=["h264"],
+    )
+    assert 'V_MPEG4/ISO/AVC, "/tmp/stream.264", fps=23.976, insertSEI, contSPS' in meta
+    assert 'A_AC3, "/tmp/stream.264"' in meta
 
 
 def test_build_spumux_pipeline_command():

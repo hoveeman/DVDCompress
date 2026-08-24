@@ -291,11 +291,22 @@ def generate_tsmuxer_meta(
     ]
     for idx, vf in enumerate(video_files):
         vcodec = video_codecs[idx] if (video_codecs and idx < len(video_codecs)) else "h264"
-        if vcodec == "hevc":
-            meta_lines.append(f'V_MPEGH/ISO/HEVC, "{vf}", fps=23.976, insertSEI, contSPS')
+        ext = os.path.splitext(vf)[1].lower()
+        if ext in (".m2ts", ".ts", ".mts", ".m2t", ".tp"):
+            v_track = ", track=4113"
+            a_track = ", track=4352"
+        elif ext in (".mkv", ".mp4", ".mov", ".m4v", ".avi"):
+            v_track = ", track=1"
+            a_track = ", track=2"
         else:
-            meta_lines.append(f'V_MPEG4/ISO/AVC, "{vf}", fps=23.976, insertSEI, contSPS')
-        meta_lines.append(f'A_AC3, "{vf}"')
+            v_track = ""
+            a_track = ""
+
+        if vcodec == "hevc":
+            meta_lines.append(f'V_MPEGH/ISO/HEVC, "{vf}"{v_track}, fps=23.976, insertSEI, contSPS')
+        else:
+            meta_lines.append(f'V_MPEG4/ISO/AVC, "{vf}"{v_track}, fps=23.976, insertSEI, contSPS')
+        meta_lines.append(f'A_AC3, "{vf}"{a_track}')
 
     if subtitle_files:
         for sub in subtitle_files[:MAX_BLURAY_SUBTITLE_STREAMS]:
