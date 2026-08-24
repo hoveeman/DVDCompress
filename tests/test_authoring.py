@@ -261,6 +261,17 @@ def test_generate_tsmuxer_meta_elementary_streams():
     assert 'A_AC3, "/tmp/stream.264"' in meta
 
 
+def test_generate_tsmuxer_meta_dynamic_fps_and_audio_files():
+    meta = generate_tsmuxer_meta(
+        video_files=["/tmp/title_1.264"],
+        video_codecs=["h264"],
+        fps_list=[29.97],
+        audio_files=["/tmp/title_1.ac3"],
+    )
+    assert 'V_MPEG4/ISO/AVC, "/tmp/title_1.264", fps=29.97, insertSEI, contSPS' in meta
+    assert 'A_AC3, "/tmp/title_1.ac3"' in meta
+
+
 def test_build_spumux_pipeline_command():
     from dvdcompress.authoring import build_spumux_pipeline_command
     import pytest

@@ -109,6 +109,26 @@ def test_bluray_cpu_libx264_command():
     assert "-b:a 192k" in cmd_str
     assert "-hwaccel" not in cmd_str
 
+
+def test_bluray_separate_elementary_streams():
+    cmd = build_bluray_transcode_command(
+        input_file="/media/input.mp4",
+        output_video="/tmp/output.264",
+        video_bitrate_kbps=22000,
+        output_audio="/tmp/output.ac3",
+        audio_stream_idx=1,
+        audio_channels=6,
+        use_gpu=False,
+        fps=29.97,
+    )
+    cmd_str = " ".join(cmd)
+    assert "-map 0:v:0" in cmd_str
+    assert "-map 0:1" in cmd_str
+    assert "-g 30" in cmd_str
+    assert "/tmp/output.264" in cmd
+    assert "/tmp/output.ac3" in cmd
+    assert cmd[-1] == "/tmp/output.ac3"
+
 def test_parse_ffmpeg_progress():
     line = "frame= 1450 fps= 85.4 q=2.0 size=   45056kB time=00:01:00.45 bitrate=6104.2kbits/s speed=3.56x"
     progress = parse_ffmpeg_progress_line(line)

@@ -464,6 +464,7 @@ class JobManager:
                 OutputMode.PREVIEW_ISO,
             )
             transcoded_files = []
+            transcoded_audio_files = []
 
             for idx, info in enumerate(media_infos):
                 job.current_file_idx = idx + 1
@@ -489,6 +490,7 @@ class JobManager:
                 if can_passthrough:
                     self.log(job_id, f"Direct Stream Passthrough active for {info.filename} ({info.video_codec.upper()} -> {job.disc_type.value.upper()}) - Re-encoding bypassed.")
                     transcoded_files.append(info.path)
+                    transcoded_audio_files.append(None)
                     job.progress_percent = round((idx + 1) / len(media_infos) * 80.0, 1)
                     await self.broadcast(job_id)
                     continue
@@ -503,9 +505,21 @@ class JobManager:
                         else f"preview_{job.output_name}"
                     )
                     out_file = os.path.join(output_dir, f"{clean_name}{out_ext}")
+                    out_audio = None
+                    transcoded_files.append(out_file)
+                    transcoded_audio_files.append(None)
                 else:
-                    out_file = os.path.join(work_dir, f"title_{idx+1}{out_ext}")
-                transcoded_files.append(out_file)
+                    if is_bluray:
+                        v_ext = ".hevc" if job.disc_type in (DiscType.BD66, DiscType.BD100, DiscType.BD128) and info.video_codec == "hevc" else ".264"
+                        out_file = os.path.join(work_dir, f"title_{idx+1}{v_ext}")
+                        out_audio = os.path.join(work_dir, f"title_{idx+1}.ac3")
+                        transcoded_files.append(out_file)
+                        transcoded_audio_files.append(out_audio)
+                    else:
+                        out_file = os.path.join(work_dir, f"title_{idx+1}{out_ext}")
+                        out_audio = None
+                        transcoded_files.append(out_file)
+                        transcoded_audio_files.append(None)
 
                 # Compute seek and duration for preview
                 seek_sec: Optional[float] = None
@@ -524,14 +538,16 @@ class JobManager:
                 if is_bluray:
                     cmd = build_bluray_transcode_command(
                         input_file=info.path,
-                        output_m2ts=out_file,
+                        output_video=out_file,
                         video_bitrate_kbps=budget.video_bitrate_kbps,
+                        output_audio=out_audio,
                         audio_stream_idx=audio_idx,
                         audio_channels=audio_ch,
                         use_gpu=job.use_gpu,
                         is_hdr=info.is_hdr,
                         seek_start_sec=seek_sec,
                         duration_sec=dur_sec,
+                        fps=info.frame_rate,
                     )
                 else:
                     cmd = build_dvd_transcode_command(
@@ -725,11 +741,14 @@ class JobManager:
                 first_chaps = chapters_list[0] if len(chapters_list) > 0 else None
                 first_subs = extracted_subtitles_by_title[0] if extracted_subtitles_by_title else None
                 video_codecs = [info.video_codec for info in media_infos]
+                fps_list = [info.frame_rate for info in media_infos]
                 meta_content = generate_tsmuxer_meta(
                     transcoded_files,
                     chapters_sec=first_chaps,
                     subtitle_files=first_subs,
                     video_codecs=video_codecs,
+                    fps_list=fps_list,
+                    audio_files=transcoded_audio_files,
                 )
                 meta_path = os.path.join(work_dir, "tsmuxer.meta")
                 with open(meta_path, "w") as mf:

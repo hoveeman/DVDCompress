@@ -273,11 +273,36 @@ def generate_dvdauthor_xml(
     return "\n".join(xml_lines)
 
 
+def normalize_tsmuxer_fps(fps: Optional[float]) -> str:
+    """Normalize video stream framerate to standard tsMuxeR fps values."""
+    if not fps or fps <= 0:
+        return "23.976"
+    if abs(fps - 23.976) < 0.05 or abs(fps - 23.98) < 0.05:
+        return "23.976"
+    if abs(fps - 24.0) < 0.05:
+        return "24"
+    if abs(fps - 25.0) < 0.05:
+        return "25"
+    if abs(fps - 29.97) < 0.05 or abs(fps - 30000 / 1001) < 0.05:
+        return "29.97"
+    if abs(fps - 30.0) < 0.05:
+        return "30"
+    if abs(fps - 50.0) < 0.05:
+        return "50"
+    if abs(fps - 59.94) < 0.05 or abs(fps - 60000 / 1001) < 0.05:
+        return "59.94"
+    if abs(fps - 60.0) < 0.05:
+        return "60"
+    return f"{fps:.3f}".rstrip("0").rstrip(".")
+
+
 def generate_tsmuxer_meta(
     video_files: List[str],
     chapters_sec: Optional[List[float]] = None,
     subtitle_files: Optional[List[Dict[str, Any]]] = None,
     video_codecs: Optional[List[str]] = None,
+    fps_list: Optional[List[float]] = None,
+    audio_files: Optional[List[Optional[str]]] = None,
 ) -> str:
     """Generate tsMuxeR .meta file content for Blu-ray BDMV muxing."""
     if chapters_sec and len(chapters_sec) > 0:
@@ -291,7 +316,13 @@ def generate_tsmuxer_meta(
     ]
     for idx, vf in enumerate(video_files):
         vcodec = video_codecs[idx] if (video_codecs and idx < len(video_codecs)) else "h264"
+        fps_val = fps_list[idx] if (fps_list and idx < len(fps_list)) else None
+        fps_str = normalize_tsmuxer_fps(fps_val)
         ext = os.path.splitext(vf)[1].lower()
+
+        # Check if a dedicated audio file is provided for this title
+        af = audio_files[idx] if (audio_files and idx < len(audio_files)) else None
+
         if ext in (".m2ts", ".ts", ".mts", ".m2t", ".tp"):
             v_track = ", track=4113"
             a_track = ", track=4352"
@@ -303,10 +334,14 @@ def generate_tsmuxer_meta(
             a_track = ""
 
         if vcodec == "hevc":
-            meta_lines.append(f'V_MPEGH/ISO/HEVC, "{vf}"{v_track}, fps=23.976, insertSEI, contSPS')
+            meta_lines.append(f'V_MPEGH/ISO/HEVC, "{vf}"{v_track}, fps={fps_str}, insertSEI, contSPS')
         else:
-            meta_lines.append(f'V_MPEG4/ISO/AVC, "{vf}"{v_track}, fps=23.976, insertSEI, contSPS')
-        meta_lines.append(f'A_AC3, "{vf}"{a_track}')
+            meta_lines.append(f'V_MPEG4/ISO/AVC, "{vf}"{v_track}, fps={fps_str}, insertSEI, contSPS')
+
+        if af:
+            meta_lines.append(f'A_AC3, "{af}"')
+        else:
+            meta_lines.append(f'A_AC3, "{vf}"{a_track}')
 
     if subtitle_files:
         for sub in subtitle_files[:MAX_BLURAY_SUBTITLE_STREAMS]:

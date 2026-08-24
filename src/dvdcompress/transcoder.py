@@ -97,31 +97,38 @@ def build_dvd_transcode_command(
 
 def build_bluray_transcode_command(
     input_file: str,
-    output_m2ts: str,
-    video_bitrate_kbps: int,
+    output_video: Optional[str] = None,
+    video_bitrate_kbps: int = 25000,
+    output_audio: Optional[str] = None,
     audio_stream_idx: int = 1,
     audio_channels: int = 6,
     use_gpu: bool = False,
     is_hdr: bool = False,
     seek_start_sec: Optional[float] = None,
     duration_sec: Optional[float] = None,
+    fps: Optional[float] = None,
+    output_m2ts: Optional[str] = None,
 ) -> List[str]:
     """Build FFmpeg command line arguments for Blu-ray compliant H.264/AVC transcoding.
 
     Args:
         input_file: Source video file path.
-        output_m2ts: Target MPEG-2 transport stream file path (.m2ts).
+        output_video: Target video file path (.264, .hevc, or .m2ts).
         video_bitrate_kbps: Target video bitrate in kbps.
+        output_audio: Optional target audio elementary stream path (.ac3). If None, multiplexes into output_video.
         audio_stream_idx: Zero-based stream index of audio in input file.
         audio_channels: Number of audio channels (e.g. 2 for stereo, 6 for 5.1).
         use_gpu: Enable NVENC hardware acceleration for encoding.
         is_hdr: Enable color matrix adaptation from HDR to SDR.
         seek_start_sec: Optional seek start timestamp in seconds for preview clipping.
         duration_sec: Optional duration in seconds for preview clipping.
+        fps: Optional source/target framerate to determine compliant GOP size.
+        output_m2ts: Deprecated legacy alias for output_video.
 
     Returns:
         List of command-line arguments starting with 'ffmpeg'.
     """
+    target_video = output_video or output_m2ts or "output.m2ts"
     cmd = ["ffmpeg", "-y"]
     if use_gpu:
         cmd.extend(["-hwaccel", "cuda"])
@@ -139,9 +146,11 @@ def build_bluray_transcode_command(
             cmd.extend(["-t", str(duration_sec)])
         cmd.extend(["-c:v", "libx264", "-profile:v", "high", "-level", "4.1", "-bluray-compat", "1"])
 
-    cmd.extend(["-map", "0:v:0", "-map", f"0:{audio_stream_idx}"])
+    cmd.extend(["-map", "0:v:0"])
     cmd.extend(["-b:v", f"{video_bitrate_kbps}k", "-maxrate", "35000k", "-bufsize", "30000k"])
-    cmd.extend(["-g", "24", "-keyint_min", "1", "-bf", "3"])
+
+    gop_size = max(12, int(round(fps))) if (fps and fps > 0) else 24
+    cmd.extend(["-g", str(gop_size), "-keyint_min", "1", "-bf", "3"])
 
     if is_hdr:
         vf_filter = "scale=1920:1080:in_color_matrix=bt2020nc:out_color_matrix=bt709:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
@@ -149,13 +158,27 @@ def build_bluray_transcode_command(
         vf_filter = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
 
     cmd.extend(["-vf", vf_filter])
-    cmd.extend(["-c:a", "ac3", "-ar", "48000"])
-    if audio_channels >= 6:
-        cmd.extend(["-ac", "6", "-b:a", "448k"])
-    else:
-        cmd.extend(["-ac", "2", "-b:a", "192k"])
 
-    cmd.append(output_m2ts)
+    if output_audio:
+        # Separate elementary streams mode
+        cmd.append(target_video)
+        cmd.extend(["-map", f"0:{audio_stream_idx}"])
+        cmd.extend(["-c:a", "ac3", "-ar", "48000"])
+        if audio_channels >= 6:
+            cmd.extend(["-ac", "6", "-b:a", "448k"])
+        else:
+            cmd.extend(["-ac", "2", "-b:a", "192k"])
+        cmd.append(output_audio)
+    else:
+        # Single multiplexed container mode (e.g. preview video)
+        cmd.extend(["-map", f"0:{audio_stream_idx}"])
+        cmd.extend(["-c:a", "ac3", "-ar", "48000"])
+        if audio_channels >= 6:
+            cmd.extend(["-ac", "6", "-b:a", "448k"])
+        else:
+            cmd.extend(["-ac", "2", "-b:a", "192k"])
+        cmd.append(target_video)
+
     return cmd
 
 

@@ -25,6 +25,7 @@ from dvdcompress.authoring import (
     build_spumux_pipeline_command,
     get_spumux_font_path,
     format_chapter_time,
+    normalize_tsmuxer_fps,
 )
 from dvdcompress.menu import (
     MenuButton,
@@ -77,6 +78,7 @@ __all__ = [
     "generate_dvdauthor_xml",
     "generate_dvd_palette_rgb",
     "generate_tsmuxer_meta",
+    "normalize_tsmuxer_fps",
     "generate_spumux_xml",
     "build_spumux_pipeline_command",
     "get_spumux_font_path",
