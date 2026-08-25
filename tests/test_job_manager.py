@@ -1455,6 +1455,91 @@ async def test_job_pipeline_dvd_pgs_bitmap_subtitle_conversion(tmp_path, monkeyp
     assert '<subpicture lang="en"' in captured_dvdauthor_xml[0]
 
 
+@pytest.mark.asyncio
+async def test_job_pipeline_dvd_2phase_gpu_hdr_transcode(tmp_path, monkeypatch):
+    """Verify that when use_gpu=True and is_hdr=True for DVD, JobManager runs 2-phase transcode and keeps intermediate."""
+    manager = JobManager()
+    manager.jobs.clear()
+    media_file = str(tmp_path / "4k_hdr_movie.mkv")
+    with open(media_file, "w") as f:
+        f.write("content")
 
+    output_dir = str(tmp_path / "output")
+    scratch_dir = str(tmp_path / "scratch")
+    os.makedirs(output_dir, exist_ok=True)
 
+    fake_hdr_info = MediaInfo(
+        path=media_file,
+        filename="4k_hdr_movie.mkv",
+        duration_sec=7200.0,
+        width=3840,
+        height=2160,
+        aspect_ratio="16:9",
+        frame_rate=23.976,
+        video_codec="hevc",
+        pix_fmt="yuv420p10le",
+        color_transfer="smpte2084",
+        color_primaries="bt2020",
+        is_hdr=True,
+        audio_streams=[AudioStreamInfo(index=1, codec_name="ac3", channels=6)],
+        subtitle_streams=[],
+        size_bytes=45000000000,
+    )
 
+    monkeypatch.setattr("dvdcompress.job_manager.probe_media_file", AsyncMock(return_value=fake_hdr_info))
+
+    executed_cmds = []
+
+    class FakeProc:
+        returncode = 0
+        async def wait(self): return 0
+        @property
+        def stderr(self):
+            class Stream:
+                async def read(self, n): return b""
+            return Stream()
+        def send_signal(self, sig): pass
+        def kill(self): pass
+        async def communicate(self): return (b"", b"")
+
+    async def fake_exec(*cmd, **kwargs):
+        executed_cmds.append(list(cmd))
+        if "-o" in cmd:
+            iso_target = cmd[cmd.index("-o") + 1]
+            if iso_target.endswith(".iso"):
+                with open(iso_target, "w") as f:
+                    f.write("ISO_BYTES")
+        return FakeProc()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+
+    job_id = manager.create_job(
+        input_files=[media_file],
+        disc_type=DiscType.DVD9,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="hdr_dvd9",
+        use_gpu=True,
+    )
+
+    await manager.start_job(job_id, scratch_dir=scratch_dir, output_dir=output_dir)
+    await manager.active_tasks[job_id]
+
+    job = manager.get_job(job_id)
+    assert job.stage == JobStage.COMPLETED
+
+    # Verify both phases were logged
+    assert any("Applying GPU Phase 1/2: Fast Hardware Tone-Mapping" in log for log in job.logs)
+    assert any("Applying Phase 2/2: Fast DVD MPEG-2 Encoding" in log for log in job.logs)
+    assert any("Preserving intermediate SDR file in scratch directory" in log for log in job.logs)
+
+    # Verify Phase 1 (GPU H.264 intermediate) was executed
+    phase1_cmds = [c for c in executed_cmds if c[0] == "ffmpeg" and "h264_nvenc" in c]
+    assert len(phase1_cmds) == 1
+    assert "-hwaccel" in phase1_cmds[0]
+    assert "cuda" in phase1_cmds[0]
+    assert any(arg.endswith(".mp4") for arg in phase1_cmds[0])
+
+    # Verify Phase 2 (Fast CPU MPEG-2) was executed reading from intermediate
+    phase2_cmds = [c for c in executed_cmds if c[0] == "ffmpeg" and "-target" in c and "ntsc-dvd" in c]
+    assert len(phase2_cmds) == 1
+    assert any("intermediate_sdr_title_1" in arg for arg in phase2_cmds[0])

@@ -15,6 +15,8 @@ from dvdcompress.models import (
 from dvdcompress.calculator import calculate_bitrate_budget, DISC_CAPACITIES_MB
 from dvdcompress.transcoder import (
     build_dvd_transcode_command,
+    build_gpu_hdr_intermediate_command,
+    build_dvd_from_intermediate_command,
     build_bluray_transcode_command,
     parse_ffmpeg_progress_line,
 )
@@ -73,6 +75,8 @@ __all__ = [
     "calculate_bitrate_budget",
     "DISC_CAPACITIES_MB",
     "build_dvd_transcode_command",
+    "build_gpu_hdr_intermediate_command",
+    "build_dvd_from_intermediate_command",
     "build_bluray_transcode_command",
     "parse_ffmpeg_progress_line",
     "generate_dvdauthor_xml",
@@ -111,4 +115,4 @@ __all__ = [
     "__version__",
 ]
 
-__version__ = "1.0.9"
+__version__ = "1.0.10"

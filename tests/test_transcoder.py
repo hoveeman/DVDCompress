@@ -331,6 +331,47 @@ def test_dvd_aspect_ratio_filter_letterbox_and_pillarbox():
     assert "setdar=4/3" in vf_ntsc_4_3
 
 
+def test_build_gpu_hdr_intermediate_command():
+    from dvdcompress.transcoder import build_gpu_hdr_intermediate_command
+
+    cmd = build_gpu_hdr_intermediate_command(
+        input_file="/media/4k_hdr_movie.mkv",
+        output_file="/tmp/scratch/intermediate_sdr_1.mp4",
+        tv_standard=TVStandard.NTSC,
+        aspect_ratio=AspectRatio.RATIO_16_9,
+        audio_stream_idx=1,
+        audio_channels=6,
+        seek_start_sec=10.0,
+        duration_sec=60.0,
+    )
+    cmd_str = " ".join(cmd)
+    assert "-hwaccel cuda" in cmd_str
+    assert "-ss 10.0" in cmd_str
+    assert "-t 60.0" in cmd_str
+    assert "-c:v h264_nvenc" in cmd_str
+    assert "-cq 10" in cmd_str
+    assert "zscale=t=linear:npl=100" in cmd_str
+    assert "tonemap=tonemap=mobius:desat=0.5:peak=100" in cmd_str
+    assert "zscale=p=smpte170m:t=smpte170m:m=smpte170m:r=limited" in cmd_str
+    assert "-c:a ac3 -ar 48000 -ac 6 -b:a 384k" in cmd_str
+    assert "/tmp/scratch/intermediate_sdr_1.mp4" in cmd_str
 
 
+def test_build_dvd_from_intermediate_command():
+    from dvdcompress.transcoder import build_dvd_from_intermediate_command
 
+    cmd = build_dvd_from_intermediate_command(
+        intermediate_file="/tmp/scratch/intermediate_sdr_1.mp4",
+        output_mpg="/output/movie.mpg",
+        video_bitrate_kbps=5400,
+        tv_standard=TVStandard.NTSC,
+        aspect_ratio=AspectRatio.RATIO_16_9,
+        audio_channels=2,
+    )
+    cmd_str = " ".join(cmd)
+    assert "-i /tmp/scratch/intermediate_sdr_1.mp4" in cmd_str
+    assert "-target ntsc-dvd" in cmd_str
+    assert "-b:v 5400k" in cmd_str
+    assert "-vf setsar=32/27,setdar=16/9,format=yuv420p" in cmd_str
+    assert "-c:a ac3 -ar 48000 -ac 2 -b:a 192k" in cmd_str
+    assert "/output/movie.mpg" in cmd_str

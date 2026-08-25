@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import time
@@ -43,7 +44,9 @@ from dvdcompress.models import AspectRatio, DiscType, MenuEndAction, MenuMode, O
 from dvdcompress.probe import probe_media_file
 from dvdcompress.transcoder import (
     build_bluray_transcode_command,
+    build_dvd_from_intermediate_command,
     build_dvd_transcode_command,
+    build_gpu_hdr_intermediate_command,
     parse_ffmpeg_progress_line,
 )
 
@@ -384,6 +387,87 @@ class JobManager:
                 await self.resume_job(other_id)
                 break
 
+    async def _run_ffmpeg_with_progress(
+        self,
+        job_id: str,
+        cmd: List[str],
+        effective_duration: float,
+        title_idx: int,
+        total_titles: int,
+        filename: str,
+        phase_offset: float = 0.0,
+        phase_scale: float = 1.0,
+    ) -> None:
+        job = self.jobs[job_id]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        self.active_processes[job_id] = proc
+
+        buffer = ""
+        stderr_recent = []
+        try:
+            while True:
+                if job_id in self.pause_events:
+                    await self.pause_events[job_id].wait()
+
+                chunk = await proc.stderr.read(512)
+                if not chunk:
+                    break
+                buffer += chunk.decode(errors="replace")
+                lines = buffer.replace("\r", "\n").split("\n")
+                buffer = lines[-1]
+                for line in lines[:-1]:
+                    if line.strip():
+                        stderr_recent.append(line.strip())
+                        if len(stderr_recent) > 30:
+                            stderr_recent.pop(0)
+
+                    prog = parse_ffmpeg_progress_line(line)
+                    if "frame" in prog or "time_sec" in prog:
+                        if "fps" in prog:
+                            job.fps = prog["fps"]
+                        if "speed" in prog:
+                            job.speed = prog["speed"]
+                        if effective_duration > 0 and "time_sec" in prog:
+                            raw_pct = min(100.0, (prog["time_sec"] / effective_duration) * 100.0)
+                            file_pct = phase_offset + (raw_pct * phase_scale)
+                            job.stage_percent = round(file_pct, 1)
+                            overall_multiplier = 100.0 if job.output_mode == OutputMode.PREVIEW_VIDEO else 60.0
+                            overall_pct = ((title_idx + (file_pct / 100.0)) / total_titles) * overall_multiplier
+                            job.progress_percent = round(overall_pct, 1)
+
+                            rem_sec = max(0.0, effective_duration - prog["time_sec"])
+                            try:
+                                speed_num = float(job.speed.rstrip("x")) if job.speed else 1.0
+                                speed_num = max(0.1, speed_num)
+                            except Exception:
+                                speed_num = 1.0
+                            eta_sec = int(rem_sec / speed_num)
+                            m, s = divmod(eta_sec, 60)
+                            h, m = divmod(m, 60)
+                            job.eta = f"{h:02d}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
+
+                        if job.stage != JobStage.PAUSED:
+                            await self.broadcast(job_id)
+
+            await proc.wait()
+            if proc.returncode != 0 and job.stage != JobStage.CANCELLED:
+                err_msg = " | ".join(stderr_recent[-3:]) if stderr_recent else f"exit code {proc.returncode}"
+                raise RuntimeError(f"Transcoding failed for {filename}: {err_msg}")
+        except (asyncio.CancelledError, Exception):
+            try:
+                proc.send_signal(signal.SIGCONT)
+                proc.kill()
+            except Exception:
+                pass
+            raise
+        finally:
+            if job_id in self.active_processes and self.active_processes[job_id] == proc:
+                del self.active_processes[job_id]
+
     async def cancel_job(self, job_id: str):
         job = self.get_job(job_id)
         if job_id in self.pause_events:
@@ -549,6 +633,46 @@ class JobManager:
                         duration_sec=dur_sec,
                         fps=info.frame_rate,
                     )
+                    if info.is_hdr:
+                        self.log(job_id, f"Applying HDR/Dolby Vision -> SDR Filmic Tone-Mapping for {info.filename}")
+                    self.log(job_id, f"Transcoding [{idx+1}/{len(media_infos)}]: {info.filename}")
+                    await self._run_ffmpeg_with_progress(job_id, cmd, effective_duration, idx, len(media_infos), info.filename)
+                elif job.use_gpu and info.is_hdr:
+                    # 2-Phase GPU accelerated pipeline for DVD
+                    clean_stem = re.sub(r"[^a-zA-Z0-9_\-]", "_", os.path.splitext(info.filename)[0])
+                    intermediate_sdr_file = os.path.join(work_dir, f"intermediate_sdr_title_{idx+1}_{clean_stem}.mp4")
+
+                    # Phase 1: GPU Fast Hardware Tone-Mapping and Downscaling to 480p SDR Intermediate
+                    self.log(job_id, f"Applying GPU Phase 1/2: Fast Hardware Tone-Mapping (HDR/DV -> 480p SDR Intermediate) for {info.filename}")
+                    cmd_phase1 = build_gpu_hdr_intermediate_command(
+                        input_file=info.path,
+                        output_file=intermediate_sdr_file,
+                        tv_standard=job.tv_standard,
+                        aspect_ratio=job.aspect_ratio,
+                        audio_stream_idx=audio_idx,
+                        audio_channels=audio_ch,
+                        seek_start_sec=seek_sec,
+                        duration_sec=dur_sec,
+                    )
+                    await self._run_ffmpeg_with_progress(
+                        job_id, cmd_phase1, effective_duration, idx, len(media_infos), info.filename, phase_offset=0.0, phase_scale=0.5
+                    )
+
+                    # Phase 2: Fast CPU MPEG-2 Encoding
+                    self.log(job_id, f"Applying Phase 2/2: Fast DVD MPEG-2 Encoding for {info.filename}")
+                    cmd_phase2 = build_dvd_from_intermediate_command(
+                        intermediate_file=intermediate_sdr_file,
+                        output_mpg=out_file,
+                        video_bitrate_kbps=budget.video_bitrate_kbps,
+                        tv_standard=job.tv_standard,
+                        aspect_ratio=job.aspect_ratio,
+                        audio_channels=audio_ch,
+                    )
+                    await self._run_ffmpeg_with_progress(
+                        job_id, cmd_phase2, effective_duration, idx, len(media_infos), info.filename, phase_offset=50.0, phase_scale=0.5
+                    )
+
+                    self.log(job_id, f"Preserving intermediate SDR file in scratch directory: {intermediate_sdr_file}")
                 else:
                     cmd = build_dvd_transcode_command(
                         input_file=info.path,
@@ -563,74 +687,10 @@ class JobManager:
                         seek_start_sec=seek_sec,
                         duration_sec=dur_sec,
                     )
-
-                if info.is_hdr:
-                    self.log(job_id, f"Applying HDR/Dolby Vision -> SDR Filmic Tone-Mapping for {info.filename}")
-
-                self.log(job_id, f"Transcoding [{idx+1}/{len(media_infos)}]: {info.filename}")
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                current_process = proc
-                self.active_processes[job_id] = proc
-
-                buffer = ""
-                stderr_recent = []
-                while True:
-                    # If paused, wait for resume
-                    if job_id in self.pause_events:
-                        await self.pause_events[job_id].wait()
-
-                    chunk = await proc.stderr.read(512)
-                    if not chunk:
-                        break
-                    buffer += chunk.decode(errors="replace")
-                    lines = buffer.replace("\r", "\n").split("\n")
-                    buffer = lines[-1]
-                    for line in lines[:-1]:
-                        if line.strip():
-                            stderr_recent.append(line.strip())
-                            if len(stderr_recent) > 30:
-                                stderr_recent.pop(0)
-
-                        prog = parse_ffmpeg_progress_line(line)
-                        if "frame" in prog or "time_sec" in prog:
-                            if "fps" in prog:
-                                job.fps = prog["fps"]
-                            if "speed" in prog:
-                                job.speed = prog["speed"]
-                            if effective_duration > 0 and "time_sec" in prog:
-                                file_pct = min(100.0, (prog["time_sec"] / effective_duration) * 100.0)
-                                job.stage_percent = round(file_pct, 1)
-                                overall_multiplier = 100.0 if job.output_mode == OutputMode.PREVIEW_VIDEO else 60.0
-                                overall_pct = ((idx + (file_pct / 100.0)) / len(media_infos)) * overall_multiplier
-                                job.progress_percent = round(overall_pct, 1)
-
-                                # Calculate live ETA
-                                rem_sec = max(0.0, effective_duration - prog["time_sec"])
-                                try:
-                                    speed_num = float(job.speed.rstrip("x")) if job.speed else 1.0
-                                    speed_num = max(0.1, speed_num)
-                                except Exception:
-                                    speed_num = 1.0
-                                eta_sec = int(rem_sec / speed_num)
-                                m, s = divmod(eta_sec, 60)
-                                h, m = divmod(m, 60)
-                                job.eta = f"{h:02d}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
-
-                            if job.stage != JobStage.PAUSED:
-                                await self.broadcast(job_id)
-
-                await proc.wait()
-                current_process = None
-                if job_id in self.active_processes:
-                    del self.active_processes[job_id]
-
-                if proc.returncode != 0 and job.stage != JobStage.CANCELLED:
-                    err_msg = " | ".join(stderr_recent[-3:]) if stderr_recent else f"exit code {proc.returncode}"
-                    raise RuntimeError(f"Transcoding failed for {info.filename}: {err_msg}")
+                    if info.is_hdr:
+                        self.log(job_id, f"Applying HDR/Dolby Vision -> SDR Filmic Tone-Mapping for {info.filename}")
+                    self.log(job_id, f"Transcoding [{idx+1}/{len(media_infos)}]: {info.filename}")
+                    await self._run_ffmpeg_with_progress(job_id, cmd, effective_duration, idx, len(media_infos), info.filename)
 
             # If PREVIEW_VIDEO, pipeline completes here
             if job.output_mode == OutputMode.PREVIEW_VIDEO:
