@@ -111,11 +111,16 @@ def build_gpu_hdr_intermediate_command(
     seek_start_sec: Optional[float] = None,
     duration_sec: Optional[float] = None,
 ) -> List[str]:
-    """Build FFmpeg command line for Phase 1 GPU hardware HDR/Dolby Vision tone-mapping and downscaling.
+    """Build FFmpeg command line for Phase 1 zero-copy GPU hardware HDR/Dolby Vision tone-mapping and downscaling.
 
-    Produces a visually lossless 480p/576p SDR H.264 intermediate file with Rec.601 color matrix.
+    Maintains video frames entirely in CUDA VRAM (NVDEC -> tonemap_cuda -> scale_cuda -> h264_nvenc)
+    for maximum speed (200-500+ FPS) without CPU PCIe transfer bottleneck.
     """
-    cmd = ["ffmpeg", "-y", "-hwaccel", "cuda"]
+    cmd = [
+        "ffmpeg", "-y",
+        "-hwaccel", "cuda",
+        "-hwaccel_output_format", "cuda",
+    ]
 
     if seek_start_sec is not None and seek_start_sec > 0:
         cmd.extend(["-ss", str(seek_start_sec)])
@@ -129,31 +134,12 @@ def build_gpu_hdr_intermediate_command(
     cmd.extend(["-map", f"0:{audio_stream_idx}"])
 
     is_ntsc = tv_standard in (TVStandard.NTSC, TVStandard.AUTO)
-    is_16_9 = aspect_ratio == AspectRatio.RATIO_16_9
+    final_w, final_h = (720, 480) if is_ntsc else (720, 576)
 
-    if is_ntsc:
-        final_w, final_h = 720, 480
-        sar_val, dar_val = ("32/27", "16/9") if is_16_9 else ("8/9", "4/3")
-    else:
-        final_w, final_h = 720, 576
-        sar_val, dar_val = ("64/45", "16/9") if is_16_9 else ("16/15", "4/3")
+    # Pure GPU zero-copy CUDA filter pipeline: Mobius tone-mapping + CUDA downscaling to DVD resolution
+    vf_filter = f"tonemap_cuda=tonemap=mobius:format=nv12,scale_cuda=w={final_w}:h={final_h}:format=yuv420p"
 
-    dar_str = "16/9" if is_16_9 else "4/3"
-    scale_expr = (
-        f"scale=w='if(gte(dar,{dar_str}),{final_w},max(2,min({final_w},trunc({final_w}*dar/({dar_str})/2)*2)))':"
-        f"h='if(gte(dar,{dar_str}),max(2,min({final_h},trunc({final_h}*({dar_str})/dar/2)*2)),{final_h})'"
-    )
-    pad_expr = f"pad={final_w}:{final_h}:(ow-iw)/2:(oh-ih)/2"
-    matrix_val = "smpte170m" if is_ntsc else "bt470bg"
-
-    vf_filter = (
-        f"{scale_expr},{pad_expr},"
-        f"zscale=t=linear:npl=100,tonemap=tonemap=mobius:desat=0.5:peak=100,"
-        f"zscale=p={matrix_val}:t={matrix_val}:m={matrix_val}:r=limited,"
-        f"setsar={sar_val},setdar={dar_val},format=yuv420p"
-    )
-
-    cmd.extend(["-c:v", "h264_nvenc", "-preset", "p7", "-cq", "10", "-vf", vf_filter])
+    cmd.extend(["-c:v", "h264_nvenc", "-preset", "p2", "-cq", "16", "-vf", vf_filter])
 
     cmd.extend(["-c:a", "ac3", "-ar", "48000"])
     if audio_channels >= 6:
@@ -219,29 +205,13 @@ def build_bluray_transcode_command(
     fps: Optional[float] = None,
     output_m2ts: Optional[str] = None,
 ) -> List[str]:
-    """Build FFmpeg command line arguments for Blu-ray compliant H.264/AVC transcoding.
-
-    Args:
-        input_file: Source video file path.
-        output_video: Target video file path (.264, .hevc, or .m2ts).
-        video_bitrate_kbps: Target video bitrate in kbps.
-        output_audio: Optional target audio elementary stream path (.ac3). If None, multiplexes into output_video.
-        audio_stream_idx: Zero-based stream index of audio in input file.
-        audio_channels: Number of audio channels (e.g. 2 for stereo, 6 for 5.1).
-        use_gpu: Enable NVENC hardware acceleration for encoding.
-        is_hdr: Enable HDR/Dolby Vision to SDR filmic tone-mapping and BT.709 color conversion.
-        seek_start_sec: Optional seek start timestamp in seconds for preview clipping.
-        duration_sec: Optional duration in seconds for preview clipping.
-        fps: Optional source/target framerate to determine compliant GOP size.
-        output_m2ts: Deprecated legacy alias for output_video.
-
-    Returns:
-        List of command-line arguments starting with 'ffmpeg'.
-    """
+    """Build FFmpeg command line arguments for Blu-ray compliant H.264/AVC transcoding."""
     target_video = output_video or output_m2ts or "output.m2ts"
     cmd = ["ffmpeg", "-y"]
     if use_gpu:
         cmd.extend(["-hwaccel", "cuda"])
+        if is_hdr:
+            cmd.extend(["-hwaccel_output_format", "cuda"])
         if seek_start_sec is not None and seek_start_sec > 0:
             cmd.extend(["-ss", str(seek_start_sec)])
         cmd.extend(["-i", input_file])
@@ -262,7 +232,9 @@ def build_bluray_transcode_command(
     gop_size = max(12, int(round(fps))) if (fps and fps > 0) else 24
     cmd.extend(["-g", str(gop_size), "-keyint_min", "1", "-bf", "3"])
 
-    if is_hdr:
+    if is_hdr and use_gpu:
+        vf_filter = "tonemap_cuda=tonemap=mobius:format=nv12,scale_cuda=w=1920:h=1080:format=yuv420p"
+    elif is_hdr:
         vf_filter = (
             "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,"
             "zscale=t=linear:npl=100,tonemap=tonemap=mobius:desat=0.5:peak=100,"

@@ -346,13 +346,14 @@ def test_build_gpu_hdr_intermediate_command():
     )
     cmd_str = " ".join(cmd)
     assert "-hwaccel cuda" in cmd_str
+    assert "-hwaccel_output_format cuda" in cmd_str
     assert "-ss 10.0" in cmd_str
     assert "-t 60.0" in cmd_str
     assert "-c:v h264_nvenc" in cmd_str
-    assert "-cq 10" in cmd_str
-    assert "zscale=t=linear:npl=100" in cmd_str
-    assert "tonemap=tonemap=mobius:desat=0.5:peak=100" in cmd_str
-    assert "zscale=p=smpte170m:t=smpte170m:m=smpte170m:r=limited" in cmd_str
+    assert "-preset p2" in cmd_str
+    assert "-cq 16" in cmd_str
+    assert "tonemap_cuda=tonemap=mobius:format=nv12" in cmd_str
+    assert "scale_cuda=w=720:h=480:format=yuv420p" in cmd_str
     assert "-c:a ac3 -ar 48000 -ac 6 -b:a 384k" in cmd_str
     assert "/tmp/scratch/intermediate_sdr_1.mp4" in cmd_str
 
