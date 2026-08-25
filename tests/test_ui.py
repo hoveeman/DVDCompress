@@ -328,6 +328,34 @@ def test_menu_end_action_ui_elements():
     assert "group-menu-end-action" in js
 
 
+def test_job_history_table_headers_and_pagination_ui():
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    html = res_html.text
+    assert "<th>Duration</th>" in html
+    assert "<th>Size</th>" in html
+    assert 'id="jobs-pagination-controls"' in html
+    assert 'id="jobs-pagination-info"' in html
+    assert 'id="jobs-pagination-buttons"' in html
+
+    res_css = client.get("/css/style.css")
+    assert res_css.status_code == 200
+    css = res_css.text
+    assert ".jobs-pagination" in css
+    assert ".pagination-btn" in css
+
+    res_js = client.get("/js/app.js")
+    assert res_js.status_code == 200
+    js = res_js.text
+    assert "formatDuration" in js
+    assert "formatJobSize" in js
+    assert "ITEMS_PER_PAGE = 10" in js
+    assert "jobs-pagination-controls" in js
+    assert "jobs-pagination-info" in js
+    assert "jobs-pagination-buttons" in js
+
+
+
 
 
 

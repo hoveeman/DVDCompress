@@ -103,6 +103,11 @@ class Job(BaseModel):
     error_message: Optional[str] = None
     output_iso_path: Optional[str] = None
     logs: List[str] = Field(default_factory=list)
+    created_at: float = Field(default_factory=time.time)
+    started_at: Optional[float] = None
+    completed_at: Optional[float] = None
+    duration_sec: Optional[float] = None
+    completed_size_bytes: Optional[int] = None
 
 
 class JobManager:
@@ -511,6 +516,9 @@ class JobManager:
 
         current_process: Optional[asyncio.subprocess.Process] = None
 
+        if not job.started_at:
+            job.started_at = time.time()
+
         try:
             # 1. Probing
             job.stage = JobStage.PROBING
@@ -698,10 +706,20 @@ class JobManager:
                 job.progress_percent = 100.0
                 job.stage_percent = 100.0
                 job.output_iso_path = transcoded_files[0] if transcoded_files else None
+                job.completed_at = time.time()
+                if job.started_at:
+                    job.duration_sec = max(0.0, job.completed_at - job.started_at)
+                if job.output_iso_path and os.path.exists(job.output_iso_path):
+                    try:
+                        job.completed_size_bytes = os.path.getsize(job.output_iso_path)
+                    except OSError:
+                        pass
                 self.log(job_id, f"Sample video preview completed: {job.output_iso_path}")
+                self.save_jobs()
                 await self.broadcast(job_id)
                 await self._auto_resume_next_job(job_id)
                 return
+
 
             # Check pause before authoring
             if job_id in self.pause_events:
@@ -1164,7 +1182,16 @@ class JobManager:
                 job.stage = JobStage.COMPLETED
                 job.progress_percent = 100.0
                 job.stage_percent = 100.0
+                job.completed_at = time.time()
+                if job.started_at:
+                    job.duration_sec = max(0.0, job.completed_at - job.started_at)
+                if os.path.exists(iso_path):
+                    try:
+                        job.completed_size_bytes = os.path.getsize(iso_path)
+                    except OSError:
+                        pass
                 self.log(job_id, f"Sample ISO preview completed: {iso_path}")
+                self.save_jobs()
                 await self.broadcast(job_id)
                 await self._auto_resume_next_job(job_id)
                 return
@@ -1243,6 +1270,14 @@ class JobManager:
             job.stage = JobStage.COMPLETED
             job.progress_percent = 100.0
             job.stage_percent = 100.0
+            job.completed_at = time.time()
+            if job.started_at:
+                job.duration_sec = max(0.0, job.completed_at - job.started_at)
+            if os.path.exists(iso_path):
+                try:
+                    job.completed_size_bytes = os.path.getsize(iso_path)
+                except OSError:
+                    pass
             self.log(job_id, "Job finished successfully!")
             self.save_jobs()
             await self.broadcast(job_id)
@@ -1255,6 +1290,9 @@ class JobManager:
                 except Exception:
                     pass
             job.stage = JobStage.CANCELLED
+            job.completed_at = time.time()
+            if job.started_at:
+                job.duration_sec = max(0.0, job.completed_at - job.started_at)
             job.error_message = "Job cancelled by user"
             self.log(job_id, "Job was cancelled.")
             self.save_jobs()
@@ -1267,10 +1305,14 @@ class JobManager:
                 except Exception:
                     pass
             job.stage = JobStage.FAILED
+            job.completed_at = time.time()
+            if job.started_at:
+                job.duration_sec = max(0.0, job.completed_at - job.started_at)
             job.error_message = str(e)
             self.log(job_id, f"ERROR: {str(e)}")
             self.save_jobs()
             await self.broadcast(job_id)
+
         finally:
             if job_id in self.active_processes:
                 del self.active_processes[job_id]

@@ -1689,16 +1689,60 @@
     }
   }
 
+  // Helper: Format Duration for Job History
+  function formatDuration(job) {
+    if (!job) return '—';
+    let duration = job.duration_sec;
+    if (duration == null || duration === undefined) {
+      if (job.started_at && !['completed', 'failed', 'cancelled', 'idle', 'queued'].includes(job.stage)) {
+        duration = Math.max(0, (Date.now() / 1000) - job.started_at);
+      }
+    }
+    if (duration == null || duration === undefined || isNaN(duration)) {
+      return '—';
+    }
+    const totalSec = Math.round(duration);
+    if (totalSec < 60) {
+      return `${totalSec}s`;
+    }
+    const hrs = Math.floor(totalSec / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    const secs = totalSec % 60;
+    if (hrs > 0) {
+      return `${hrs}h ${mins.toString().padStart(2, '0')}m ${secs.toString().padStart(2, '0')}s`;
+    }
+    return `${mins}m ${secs.toString().padStart(2, '0')}s`;
+  }
+
+  // Helper: Format Output Size for Job History
+  function formatJobSize(job) {
+    if (!job || !job.completed_size_bytes || job.completed_size_bytes <= 0) return '—';
+    return formatBytes(job.completed_size_bytes);
+  }
+
+  const ITEMS_PER_PAGE = 10;
+
   // Job History
   async function loadJobHistory() {
     const tbody = document.getElementById('jobs-table-body');
     const empty = document.getElementById('jobs-empty');
+    const paginationContainer = document.getElementById('jobs-pagination-controls');
+    const paginationInfo = document.getElementById('jobs-pagination-info');
+    const paginationButtons = document.getElementById('jobs-pagination-buttons');
     if (!tbody || !empty) return;
 
     try {
       const res = await fetch('/api/jobs');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const jobs = await res.json();
+      const rawJobs = await res.json();
+
+      // Ensure newest jobs appear at the top
+      const jobs = [...rawJobs].sort((a, b) => {
+        const tA = (a.created_at !== undefined && a.created_at !== null) ? a.created_at : 0;
+        const tB = (b.created_at !== undefined && b.created_at !== null) ? b.created_at : 0;
+        if (tA !== tB) return tB - tA;
+        return 0;
+      });
       state.jobs = jobs;
 
       const activeBadge = document.getElementById('active-jobs-badge');
@@ -1711,12 +1755,24 @@
       tbody.innerHTML = '';
       if (jobs.length === 0) {
         empty.style.display = 'flex';
+        if (paginationContainer) paginationContainer.style.display = 'none';
         return;
       }
 
       empty.style.display = 'none';
 
-      jobs.forEach(j => {
+      const totalItems = jobs.length;
+      const totalPages = Math.max(1, Math.ceil(totalItems / ITEMS_PER_PAGE));
+      if (!state.jobHistoryPage || state.jobHistoryPage < 1) {
+        state.jobHistoryPage = 1;
+      } else if (state.jobHistoryPage > totalPages) {
+        state.jobHistoryPage = totalPages;
+      }
+
+      const startIndex = (state.jobHistoryPage - 1) * ITEMS_PER_PAGE;
+      const pageJobs = jobs.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+      pageJobs.forEach(j => {
         const tr = document.createElement('tr');
         const isPaused = j.stage === 'paused';
         const isActive = !['completed', 'failed', 'cancelled'].includes(j.stage);
@@ -1725,9 +1781,11 @@
           <td style="font-family: var(--font-mono); font-weight: 600;">${escapeHtml(j.job_id)}</td>
           <td>${escapeHtml(j.output_name)}</td>
           <td><span class="badge badge-stream">${(j.disc_type || '').toUpperCase()}</span></td>
-          <td style="font-size: 0.75rem; color: var(--text-secondary);">${j.output_mode}</td>
+          <td style="font-size: 0.75rem; color: var(--text-secondary);">${escapeHtml(j.output_mode || '')}</td>
           <td><span class="status-pill ${j.stage || 'idle'}">${(j.stage || 'idle').toUpperCase()}</span></td>
           <td style="font-family: var(--font-mono);">${(j.progress_percent || 0).toFixed(1)}%</td>
+          <td style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-secondary);">${formatDuration(j)}</td>
+          <td style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-secondary);">${formatJobSize(j)}</td>
           <td style="text-align: right; white-space: nowrap;">
             <button class="btn btn-secondary btn-sm btn-monitor-job">Monitor</button>
             ${isActive ? `<button class="btn btn-secondary btn-sm btn-pause-job-row" style="margin-left: 4px;">${isPaused ? 'Resume' : 'Pause'}</button>` : ''}
@@ -1780,6 +1838,61 @@
 
         tbody.appendChild(tr);
       });
+
+      // Render pagination
+      if (paginationContainer && paginationInfo && paginationButtons) {
+        paginationContainer.style.display = 'flex';
+        const startItem = startIndex + 1;
+        const endItem = Math.min(startIndex + pageJobs.length, totalItems);
+        paginationInfo.textContent = `Showing ${startItem}–${endItem} of ${totalItems} jobs`;
+
+        paginationButtons.innerHTML = '';
+
+        if (totalPages > 1) {
+          // Prev button
+          const prevBtn = document.createElement('button');
+          prevBtn.type = 'button';
+          prevBtn.className = 'pagination-btn';
+          prevBtn.innerHTML = '&laquo; Prev';
+          prevBtn.disabled = state.jobHistoryPage <= 1;
+          prevBtn.addEventListener('click', () => {
+            if (state.jobHistoryPage > 1) {
+              state.jobHistoryPage--;
+              loadJobHistory();
+            }
+          });
+          paginationButtons.appendChild(prevBtn);
+
+          // Page Number buttons
+          for (let p = 1; p <= totalPages; p++) {
+            const pageBtn = document.createElement('button');
+            pageBtn.type = 'button';
+            pageBtn.className = `pagination-btn ${p === state.jobHistoryPage ? 'active' : ''}`;
+            pageBtn.textContent = p;
+            pageBtn.addEventListener('click', () => {
+              if (state.jobHistoryPage !== p) {
+                state.jobHistoryPage = p;
+                loadJobHistory();
+              }
+            });
+            paginationButtons.appendChild(pageBtn);
+          }
+
+          // Next button
+          const nextBtn = document.createElement('button');
+          nextBtn.type = 'button';
+          nextBtn.className = 'pagination-btn';
+          nextBtn.innerHTML = 'Next &raquo;';
+          nextBtn.disabled = state.jobHistoryPage >= totalPages;
+          nextBtn.addEventListener('click', () => {
+            if (state.jobHistoryPage < totalPages) {
+              state.jobHistoryPage++;
+              loadJobHistory();
+            }
+          });
+          paginationButtons.appendChild(nextBtn);
+        }
+      }
 
     } catch (err) {
       console.error('Failed to load job history:', err);

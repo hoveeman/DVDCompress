@@ -587,6 +587,8 @@
                     <th>Mode</th>
                     <th>Status</th>
                     <th>Progress</th>
+                    <th>Duration</th>
+                    <th>Size</th>
                     <th style="text-align: right;">Action</th>
                   </tr>
                 </thead>
@@ -596,11 +598,20 @@
               </table>
             </div>
 
+            <!-- Job History Pagination Controls -->
+            <div class="jobs-pagination" id="jobs-pagination-controls" style="display: none;">
+              <span class="pagination-info" id="jobs-pagination-info">Showing 1–10 of 0 jobs</span>
+              <div class="pagination-buttons" id="jobs-pagination-buttons">
+                <!-- Rendered dynamically -->
+              </div>
+            </div>
+
             <div id="jobs-empty" class="empty-state">
               <div class="empty-state-title">No jobs found</div>
               <div class="empty-state-desc">Started authoring or burn tasks will appear here.</div>
             </div>
           </div>
+
         </section>
 
       </div>

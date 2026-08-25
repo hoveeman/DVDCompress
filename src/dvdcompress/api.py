@@ -3,7 +3,9 @@
 import asyncio
 import glob
 import os
+import time
 from typing import Any, Dict, List, Optional
+
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import FileResponse, JSONResponse
@@ -175,6 +177,13 @@ async def _run_burn_iso_pipeline(
 
     job.stage = JobStage.BURNING
     job.output_iso_path = iso_path
+    if not job.started_at:
+        job.started_at = time.time()
+    if os.path.exists(iso_path):
+        try:
+            job.completed_size_bytes = os.path.getsize(iso_path)
+        except OSError:
+            pass
     job_manager.log(
         job_id, f"Burning ISO {iso_path} to {device_path} at {speed}x..."
     )
@@ -249,7 +258,11 @@ async def _run_burn_iso_pipeline(
         job.stage = JobStage.COMPLETED
         job.progress_percent = 100.0
         job.stage_percent = 100.0
+        job.completed_at = time.time()
+        if job.started_at:
+            job.duration_sec = max(0.0, job.completed_at - job.started_at)
         job_manager.log(job_id, "Burn completed successfully!")
+        job_manager.save_jobs()
         await job_manager.broadcast(job_id)
 
     except asyncio.CancelledError:
@@ -259,8 +272,12 @@ async def _run_burn_iso_pipeline(
             except Exception:
                 pass
         job.stage = JobStage.CANCELLED
+        job.completed_at = time.time()
+        if job.started_at:
+            job.duration_sec = max(0.0, job.completed_at - job.started_at)
         job.error_message = "Burn cancelled by user"
         job_manager.log(job_id, "Burn job was cancelled.")
+        job_manager.save_jobs()
         await job_manager.broadcast(job_id)
     except Exception as e:
         if current_process:
@@ -269,9 +286,14 @@ async def _run_burn_iso_pipeline(
             except Exception:
                 pass
         job.stage = JobStage.FAILED
+        job.completed_at = time.time()
+        if job.started_at:
+            job.duration_sec = max(0.0, job.completed_at - job.started_at)
         job.error_message = str(e)
         job_manager.log(job_id, f"ERROR: {str(e)}")
+        job_manager.save_jobs()
         await job_manager.broadcast(job_id)
+
     finally:
         if job_id in job_manager.active_tasks:
             del job_manager.active_tasks[job_id]
@@ -518,7 +540,9 @@ async def create_preview(req: CreatePreviewRequest):
 
 @app.get("/api/jobs")
 def list_jobs():
-    return list(job_manager.jobs.values())
+    jobs = list(job_manager.jobs.values())
+    return sorted(jobs, key=lambda j: getattr(j, "created_at", 0.0) or 0.0, reverse=True)
+
 
 
 @app.get("/api/jobs/{job_id}")

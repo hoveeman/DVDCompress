@@ -796,6 +796,36 @@ def test_api_create_job_with_menu_end_action(tmp_path):
         assert job.menu_end_action == "next"
 
 
+def test_api_list_jobs_sorted_newest_first():
+    job_manager.clear_history()
+    j1_id = job_manager.create_job(
+        input_files=["/media/old.mkv"],
+        disc_type=DiscType.DVD5,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="old_job",
+    )
+    job1 = job_manager.get_job(j1_id)
+    job1.created_at = 1000.0
+
+    j2_id = job_manager.create_job(
+        input_files=["/media/new.mkv"],
+        disc_type=DiscType.DVD5,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="new_job",
+    )
+    job2 = job_manager.get_job(j2_id)
+    job2.created_at = 2000.0
+
+    resp = client.get("/api/jobs")
+    assert resp.status_code == 200
+    jobs = resp.json()
+    assert len(jobs) >= 2
+    idx1 = next(i for i, j in enumerate(jobs) if j["job_id"] == j1_id)
+    idx2 = next(i for i, j in enumerate(jobs) if j["job_id"] == j2_id)
+    assert idx2 < idx1  # new_job (idx2) should appear before old_job (idx1)
+
+
+
 
 
 

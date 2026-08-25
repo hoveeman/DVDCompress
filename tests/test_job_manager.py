@@ -1543,3 +1543,24 @@ async def test_job_pipeline_dvd_2phase_gpu_hdr_transcode(tmp_path, monkeypatch):
     phase2_cmds = [c for c in executed_cmds if c[0] == "ffmpeg" and "-target" in c and "ntsc-dvd" in c]
     assert len(phase2_cmds) == 1
     assert any("intermediate_sdr_title_1" in arg for arg in phase2_cmds[0])
+
+
+def test_job_timestamps_and_metrics():
+    import time
+    manager = JobManager()
+    job_id = manager.create_job(
+        input_files=["/media/movie.mkv"],
+        disc_type=DiscType.DVD5,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="metrics_test",
+    )
+    job = manager.get_job(job_id)
+    assert job is not None
+    assert job.created_at is not None
+    assert job.created_at > 0
+    assert abs(job.created_at - time.time()) < 5
+    assert job.started_at is None
+    assert job.completed_at is None
+    assert job.duration_sec is None
+    assert job.completed_size_bytes is None
+
