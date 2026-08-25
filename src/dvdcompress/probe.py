@@ -67,11 +67,27 @@ def parse_ffprobe_output(file_path: str, data: Dict[str, Any]) -> MediaInfo:
             color_transfer = s.get("color_transfer") or s.get("color_trc")
             color_primaries = s.get("color_primaries")
 
-            if color_transfer in ("smpte2084", "arib-std-b67", "smpte428"):
+            if color_transfer in ("smpte2084", "arib-std-b67", "smpte428", "linear"):
                 is_hdr = True
-            elif color_primaries == "bt2020":
+            elif color_primaries in ("bt2020", "bt2020nc", "bt2020c"):
+                is_hdr = True
+            elif color_space in ("bt2020nc", "bt2020c", "bt2020"):
                 is_hdr = True
             elif pix_fmt in ("yuv420p10le", "p010le", "yuv422p10le", "yuv444p10le", "yuv420p12le"):
+                is_hdr = True
+
+            # Check for Dolby Vision / HDR side data
+            side_data_list = s.get("side_data_list", [])
+            for sd in side_data_list:
+                sd_type = str(sd.get("side_data_type", ""))
+                if "DOVI" in sd_type or "Mastering display" in sd_type or "Content light level" in sd_type:
+                    is_hdr = True
+                if "dv_profile" in sd or "dv_version_major" in sd:
+                    is_hdr = True
+
+            # Check for DOVI codec tags
+            codec_tag = (s.get("codec_tag_string") or "").lower()
+            if codec_tag in ("dvh1", "dvhe", "dva1", "dvav"):
                 is_hdr = True
 
             width = int(s.get("width", 720) or 720)
@@ -187,7 +203,16 @@ async def sample_snippet_bitrate(
             f"h='if(gte(dar,{dar_str}),max(2,min({final_h},trunc({final_h}*({dar_str})/dar/2)*2)),{final_h})'"
         )
         pad_expr = f"pad={final_w}:{final_h}:(ow-iw)/2:(oh-ih)/2"
-        vf = f"{scale_expr},{pad_expr},setsar={sar_val},format=yuv420p"
+        matrix_val = "smpte170m" if is_ntsc else "bt470bg"
+        if is_hdr:
+            vf = (
+                f"{scale_expr},{pad_expr},zscale=t=linear:npl=100,"
+                f"tonemap=tonemap=mobius:desat=0.5:peak=100,"
+                f"zscale=p={matrix_val}:t={matrix_val}:m={matrix_val}:r=limited,"
+                f"setsar={sar_val},format=yuv420p"
+            )
+        else:
+            vf = f"{scale_expr},{pad_expr},setsar={sar_val},format=yuv420p"
         cmd = [
             "ffmpeg",
             "-y",
@@ -217,6 +242,14 @@ async def sample_snippet_bitrate(
         ]
     else:
         # Blu-ray sampling at 1080p CRF 18
+        if is_hdr:
+            bd_vf = (
+                "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,"
+                "zscale=t=linear:npl=100,tonemap=tonemap=mobius:desat=0.5:peak=100,"
+                "zscale=p=bt709:t=bt709:m=bt709:r=limited,format=yuv420p"
+            )
+        else:
+            bd_vf = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
         cmd = [
             "ffmpeg",
             "-y",
@@ -239,7 +272,7 @@ async def sample_snippet_bitrate(
             "-bufsize",
             "30000k",
             "-vf",
-            "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+            bd_vf,
             "-f",
             "rawvideo",
             "/dev/null",

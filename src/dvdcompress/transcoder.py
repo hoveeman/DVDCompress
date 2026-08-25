@@ -30,7 +30,7 @@ def build_dvd_transcode_command(
         tv_standard: TV standard (NTSC or PAL, AUTO defaults to NTSC).
         aspect_ratio: Display aspect ratio (16:9 or 4:3).
         use_gpu: Enable CUDA hardware acceleration for decoding.
-        is_hdr: Enable HDR to SDR color matrix adaptation.
+        is_hdr: Enable HDR/Dolby Vision to SDR filmic tone-mapping and color conversion.
         seek_start_sec: Optional seek start timestamp in seconds for preview clipping.
         duration_sec: Optional duration in seconds for preview clipping.
 
@@ -72,8 +72,14 @@ def build_dvd_transcode_command(
     )
     pad_expr = f"pad={final_w}:{final_h}:(ow-iw)/2:(oh-ih)/2"
 
+    matrix_val = "smpte170m" if is_ntsc else "bt470bg"
     if is_hdr:
-        vf_filter = f"{scale_expr}:in_color_matrix=bt2020nc:out_color_matrix=bt601,{pad_expr},setsar={sar_val},setdar={dar_val},format=yuv420p"
+        vf_filter = (
+            f"{scale_expr},{pad_expr},"
+            f"zscale=t=linear:npl=100,tonemap=tonemap=mobius:desat=0.5:peak=100,"
+            f"zscale=p={matrix_val}:t={matrix_val}:m={matrix_val}:r=limited,"
+            f"setsar={sar_val},setdar={dar_val},format=yuv420p"
+        )
     else:
         vf_filter = f"{scale_expr},{pad_expr},setsar={sar_val},setdar={dar_val},format=yuv420p"
 
@@ -119,7 +125,7 @@ def build_bluray_transcode_command(
         audio_stream_idx: Zero-based stream index of audio in input file.
         audio_channels: Number of audio channels (e.g. 2 for stereo, 6 for 5.1).
         use_gpu: Enable NVENC hardware acceleration for encoding.
-        is_hdr: Enable color matrix adaptation from HDR to SDR.
+        is_hdr: Enable HDR/Dolby Vision to SDR filmic tone-mapping and BT.709 color conversion.
         seek_start_sec: Optional seek start timestamp in seconds for preview clipping.
         duration_sec: Optional duration in seconds for preview clipping.
         fps: Optional source/target framerate to determine compliant GOP size.
@@ -153,7 +159,11 @@ def build_bluray_transcode_command(
     cmd.extend(["-g", str(gop_size), "-keyint_min", "1", "-bf", "3"])
 
     if is_hdr:
-        vf_filter = "scale=1920:1080:in_color_matrix=bt2020nc:out_color_matrix=bt709:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
+        vf_filter = (
+            "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,"
+            "zscale=t=linear:npl=100,tonemap=tonemap=mobius:desat=0.5:peak=100,"
+            "zscale=p=bt709:t=bt709:m=bt709:r=limited,format=yuv420p"
+        )
     else:
         vf_filter = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p"
 

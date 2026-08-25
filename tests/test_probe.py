@@ -249,6 +249,64 @@ def test_parse_ffprobe_hdr_detection():
     info_sdr = parse_ffprobe_output("/media/sdr_movie.mp4", sdr_data)
     assert info_sdr.is_hdr is False
 
+    # 3. Dolby Vision Profile 5 with DOVI side data
+    dovi_p5_data = {
+        "streams": [
+            {
+                "codec_type": "video",
+                "codec_name": "hevc",
+                "width": 3840,
+                "height": 2160,
+                "side_data_list": [
+                    {
+                        "side_data_type": "DOVI configuration record",
+                        "dv_profile": 5,
+                        "dv_level": 6,
+                    }
+                ],
+            }
+        ],
+        "format": {"duration": "100.0", "size": "1000"},
+        "chapters": [],
+    }
+    info_dovi_p5 = parse_ffprobe_output("/media/dovi_p5.mp4", dovi_p5_data)
+    assert info_dovi_p5.is_hdr is True
+
+    # 4. Dolby Vision Profile 8 with dvh1 codec tag
+    dovi_p8_data = {
+        "streams": [
+            {
+                "codec_type": "video",
+                "codec_name": "hevc",
+                "codec_tag_string": "dvh1",
+                "width": 3840,
+                "height": 2160,
+            }
+        ],
+        "format": {"duration": "100.0", "size": "1000"},
+        "chapters": [],
+    }
+    info_dovi_p8 = parse_ffprobe_output("/media/dovi_p8.mkv", dovi_p8_data)
+    assert info_dovi_p8.is_hdr is True
+
+    # 5. HLG broadcast HDR (arib-std-b67)
+    hlg_data = {
+        "streams": [
+            {
+                "codec_type": "video",
+                "codec_name": "hevc",
+                "width": 3840,
+                "height": 2160,
+                "color_transfer": "arib-std-b67",
+                "color_primaries": "bt2020",
+            }
+        ],
+        "format": {"duration": "100.0", "size": "1000"},
+        "chapters": [],
+    }
+    info_hlg = parse_ffprobe_output("/media/hlg_stream.ts", hlg_data)
+    assert info_hlg.is_hdr is True
+
 
 @pytest.mark.asyncio
 async def test_analyze_video_complexity(tmp_path):

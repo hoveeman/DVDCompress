@@ -218,8 +218,8 @@ def test_hdr_and_dolby_vision_filter_format():
 
 
 def test_hdr_color_matrix_adaptation_filtergraph():
-    """Verify that is_hdr=True injects BT.2020 to Rec.601 / Rec.709 color matrix conversion."""
-    # 1. DVD with HDR
+    """Verify that is_hdr=True injects zscale linearization, Mobius filmic tone-mapping, and target SDR color space conversion."""
+    # 1. DVD NTSC with HDR
     dvd_hdr = build_dvd_transcode_command(
         input_file="/media/hdr_clip.mkv",
         output_mpg="/output/hdr_dvd.mpg",
@@ -227,10 +227,23 @@ def test_hdr_color_matrix_adaptation_filtergraph():
         is_hdr=True,
     )
     dvd_hdr_str = " ".join(dvd_hdr)
-    assert "in_color_matrix=bt2020nc:out_color_matrix=bt601" in dvd_hdr_str
+    assert "zscale=t=linear:npl=100" in dvd_hdr_str
+    assert "tonemap=tonemap=mobius:desat=0.5:peak=100" in dvd_hdr_str
+    assert "zscale=p=smpte170m:t=smpte170m:m=smpte170m:r=limited" in dvd_hdr_str
     assert "format=yuv420p" in dvd_hdr_str
 
-    # 2. Blu-ray with HDR
+    # 2. DVD PAL with HDR
+    dvd_pal_hdr = build_dvd_transcode_command(
+        input_file="/media/hdr_clip.mkv",
+        output_mpg="/output/hdr_pal.mpg",
+        video_bitrate_kbps=5000,
+        tv_standard=TVStandard.PAL,
+        is_hdr=True,
+    )
+    dvd_pal_hdr_str = " ".join(dvd_pal_hdr)
+    assert "zscale=p=bt470bg:t=bt470bg:m=bt470bg:r=limited" in dvd_pal_hdr_str
+
+    # 3. Blu-ray with HDR
     bd_hdr = build_bluray_transcode_command(
         input_file="/media/hdr_clip.mkv",
         output_m2ts="/output/hdr_bd.m2ts",
@@ -238,10 +251,12 @@ def test_hdr_color_matrix_adaptation_filtergraph():
         is_hdr=True,
     )
     bd_hdr_str = " ".join(bd_hdr)
-    assert "in_color_matrix=bt2020nc:out_color_matrix=bt709" in bd_hdr_str
+    assert "zscale=t=linear:npl=100" in bd_hdr_str
+    assert "tonemap=tonemap=mobius:desat=0.5:peak=100" in bd_hdr_str
+    assert "zscale=p=bt709:t=bt709:m=bt709:r=limited" in bd_hdr_str
     assert "format=yuv420p" in bd_hdr_str
 
-    # 3. SDR input should NOT have in_color_matrix
+    # 4. SDR input should NOT have tonemap or zscale overhead
     dvd_sdr = build_dvd_transcode_command(
         input_file="/media/sdr_clip.mp4",
         output_mpg="/output/sdr_dvd.mpg",
@@ -249,7 +264,8 @@ def test_hdr_color_matrix_adaptation_filtergraph():
         is_hdr=False,
     )
     dvd_sdr_str = " ".join(dvd_sdr)
-    assert "in_color_matrix" not in dvd_sdr_str
+    assert "tonemap" not in dvd_sdr_str
+    assert "zscale" not in dvd_sdr_str
 
 
 def test_dvd_transcode_maps_only_video_and_audio():

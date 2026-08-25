@@ -565,7 +565,7 @@ class JobManager:
                     )
 
                 if info.is_hdr:
-                    self.log(job_id, f"Applying HDR -> SDR Color Matrix Adaptation for {info.filename}")
+                    self.log(job_id, f"Applying HDR/Dolby Vision -> SDR Filmic Tone-Mapping for {info.filename}")
 
                 self.log(job_id, f"Transcoding [{idx+1}/{len(media_infos)}]: {info.filename}")
                 proc = await asyncio.create_subprocess_exec(

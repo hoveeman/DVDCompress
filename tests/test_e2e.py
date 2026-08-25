@@ -1681,13 +1681,15 @@ async def test_e2e_hdr_hable_tonemapping_pipeline(tmp_path, monkeypatch):
 
     job = manager.get_job(job_id)
     assert job.stage == JobStage.COMPLETED
-    assert any("Applying HDR -> SDR Color Matrix Adaptation" in log for log in job.logs)
+    assert any("Applying HDR/Dolby Vision -> SDR Filmic Tone-Mapping" in log for log in job.logs)
 
-    # Verify that the transcode command executed with in_color_matrix
+    # Verify that the transcode command executed with zscale and tonemap
     ffmpeg_transcode = [c for c in executed_cmds if c[0] == "ffmpeg" and "-vf" in c][0]
     vf_idx = ffmpeg_transcode.index("-vf")
     vf_str = ffmpeg_transcode[vf_idx + 1]
-    assert "in_color_matrix=bt2020nc:out_color_matrix=bt601" in vf_str
+    assert "zscale=t=linear:npl=100" in vf_str
+    assert "tonemap=tonemap=mobius:desat=0.5:peak=100" in vf_str
+    assert "zscale=p=smpte170m" in vf_str
     assert "format=yuv420p" in vf_str
 
 
