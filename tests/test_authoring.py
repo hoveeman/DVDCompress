@@ -370,6 +370,31 @@ def test_generate_dvdauthor_xml_with_menu_and_palette():
     assert '<pgc palette="/tmp/palette.rgb">' in xml
 
 
+def test_dvdauthor_xml_multi_audio_tracks():
+    xml = generate_dvdauthor_xml(
+        titles_mpg=["/tmp/title1.mpg"],
+        chapters_sec=[[0.0, 300.0]],
+        audio_tracks_lang=["eng", "spa", "fra"],
+    )
+    assert '<audio format="ac3" lang="en"' in xml
+    assert '<audio format="ac3" lang="es"' in xml
+    assert '<audio format="ac3" lang="fr"' in xml
+
+
+def test_tsmuxer_meta_multi_audio_tracks():
+    audio_tracks = [
+        {"path": "/tmp/title_1_track1.ac3", "lang": "eng"},
+        {"path": "/tmp/title_1_track2.ac3", "lang": "spa"},
+    ]
+    meta = generate_tsmuxer_meta(
+        video_files=["/tmp/title_1.264"],
+        audio_files=[audio_tracks],
+    )
+    assert 'A_AC3, "/tmp/title_1_track1.ac3", lang=eng' in meta
+    assert 'A_AC3, "/tmp/title_1_track2.ac3", lang=spa' in meta
+
+
+
 
 
 

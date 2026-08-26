@@ -152,6 +152,11 @@ def normalize_lang_code_2(lang: Optional[str]) -> str:
     return l_lower[:2]
 
 
+MAX_DVD_AUDIO_STREAMS = 8
+MAX_DVD_SUBPICTURE_STREAMS = 32
+MAX_BLURAY_SUBTITLE_STREAMS = 32
+
+
 def generate_dvd_palette_rgb() -> str:
     """Generate standard 16-color RGB palette for DVD-Video subpictures and menus."""
     palette_colors = [
@@ -181,6 +186,7 @@ def generate_dvdauthor_xml(
     menu_mode: MenuMode = MenuMode.AUTOPLAY,
     tv_standard: TVStandard = TVStandard.NTSC,
     subtitles_lang: Optional[List[str]] = None,
+    audio_tracks_lang: Optional[List[str]] = None,
     menu_vob: Optional[str] = None,
     aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9,
     menu_end_action: MenuEndAction = MenuEndAction.RETURN_TO_MENU,
@@ -236,8 +242,14 @@ def generate_dvdauthor_xml(
     xml_lines.extend([
         '    <titles>',
         f'      <video format="{video_format}" {aspect_attr} />',
-        '      <audio format="ac3" channels="2" />',
     ])
+
+    if audio_tracks_lang and len(audio_tracks_lang) > 0:
+        for lang in audio_tracks_lang[:MAX_DVD_AUDIO_STREAMS]:
+            clean_lang = normalize_lang_code_2(lang)
+            xml_lines.append(f'      <audio format="ac3" lang="{clean_lang}" />')
+    else:
+        xml_lines.append('      <audio format="ac3" channels="2" />')
 
     if subtitles_lang:
         for lang in subtitles_lang[:MAX_DVD_SUBPICTURE_STREAMS]:
@@ -306,7 +318,7 @@ def generate_tsmuxer_meta(
     subtitle_files: Optional[List[Dict[str, Any]]] = None,
     video_codecs: Optional[List[str]] = None,
     fps_list: Optional[List[float]] = None,
-    audio_files: Optional[List[Optional[str]]] = None,
+    audio_files: Optional[List[Any]] = None,
 ) -> str:
     """Generate tsMuxeR .meta file content for Blu-ray BDMV muxing."""
     if chapters_sec and len(chapters_sec) > 0:
@@ -324,8 +336,8 @@ def generate_tsmuxer_meta(
         fps_str = normalize_tsmuxer_fps(fps_val)
         ext = os.path.splitext(vf)[1].lower()
 
-        # Check if a dedicated audio file is provided for this title
-        af = audio_files[idx] if (audio_files and idx < len(audio_files)) else None
+        # Check if dedicated audio file(s) are provided for this title
+        af_entry = audio_files[idx] if (audio_files and idx < len(audio_files)) else None
 
         if ext in (".m2ts", ".ts", ".mts", ".m2t", ".tp"):
             v_track = ", track=4113"
@@ -342,10 +354,25 @@ def generate_tsmuxer_meta(
         else:
             meta_lines.append(f'V_MPEG4/ISO/AVC, "{vf}"{v_track}, fps={fps_str}, insertSEI, contSPS')
 
-        if af:
-            meta_lines.append(f'A_AC3, "{af}"')
+        if isinstance(af_entry, list):
+            for a_item in af_entry:
+                if isinstance(a_item, dict):
+                    a_path = a_item.get("path")
+                    a_lang = a_item.get("lang")
+                    lang_attr = f", lang={a_lang}" if a_lang else ""
+                    meta_lines.append(f'A_AC3, "{a_path}"{lang_attr}')
+                elif isinstance(a_item, str):
+                    meta_lines.append(f'A_AC3, "{a_item}"')
+        elif isinstance(af_entry, dict):
+            a_path = af_entry.get("path")
+            a_lang = af_entry.get("lang")
+            lang_attr = f", lang={a_lang}" if a_lang else ""
+            meta_lines.append(f'A_AC3, "{a_path}"{lang_attr}')
+        elif isinstance(af_entry, str) and af_entry:
+            meta_lines.append(f'A_AC3, "{af_entry}"')
         else:
             meta_lines.append(f'A_AC3, "{vf}"{a_track}')
+
 
     if subtitle_files:
         for sub in subtitle_files[:MAX_BLURAY_SUBTITLE_STREAMS]:
