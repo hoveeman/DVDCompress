@@ -544,9 +544,27 @@ class JobManager:
                 total_duration += info.duration_sec
 
             # Calculate bit budget
+            is_dvd_format = job.disc_type in (DiscType.DVD5, DiscType.DVD9)
+            project_audio_kbps = []
+            for info in media_infos:
+                t_audio = info.audio_streams
+                if job.selected_audio_indices is not None and len(job.selected_audio_indices) > 0:
+                    t_audio = [a for a in info.audio_streams if a.index in job.selected_audio_indices]
+                if not t_audio and info.audio_streams:
+                    t_audio = [info.audio_streams[0]]
+                for a in t_audio:
+                    if a.channels >= 6:
+                        project_audio_kbps.append(384 if is_dvd_format else 448)
+                    else:
+                        project_audio_kbps.append(192)
+
+            if not project_audio_kbps:
+                project_audio_kbps = [192]
+
             budget = calculate_bitrate_budget(
                 total_duration_sec=total_duration,
                 disc_type=job.disc_type,
+                audio_tracks_kbps=project_audio_kbps,
                 video_count=len(job.input_files),
             )
             self.log(job_id, f"Allocated video bitrate: {budget.video_bitrate_kbps} kbps (Disc usage: {budget.capacity_percent}%)")
@@ -572,6 +590,29 @@ class JobManager:
             for idx, info in enumerate(media_infos):
                 job.current_file_idx = idx + 1
                 out_ext = ".m2ts" if is_bluray else ".mpg"
+
+                # Determine audio stream mapping from probed info
+                target_audio = info.audio_streams
+                if job.selected_audio_indices is not None and len(job.selected_audio_indices) > 0:
+                    target_audio = [a for a in info.audio_streams if a.index in job.selected_audio_indices]
+                if not target_audio and info.audio_streams:
+                    target_audio = [info.audio_streams[0]]
+
+                max_audio_cap = 32 if is_bluray else 8
+                if len(target_audio) > max_audio_cap:
+                    self.log(
+                        job_id,
+                        f"Notice: Media title {idx+1} contains {len(target_audio)} audio tracks. Clamping to the maximum {max_audio_cap} tracks allowed by optical disc specifications.",
+                        "info",
+                    )
+                    target_audio = target_audio[:max_audio_cap]
+
+                audio_indices = [a.index for a in target_audio]
+                audio_channels_list = [a.channels for a in target_audio]
+                audio_langs = [a.language or "und" for a in target_audio]
+
+                audio_idx = audio_indices[0] if audio_indices else 1
+                audio_ch = audio_channels_list[0] if audio_channels_list else (6 if is_bluray else 2)
 
                 # Check passthrough eligibility
                 can_passthrough = False
@@ -600,6 +641,7 @@ class JobManager:
                 elif job.passthrough and not is_preview:
                     self.log(job_id, f"Notice: {info.filename} ({info.video_codec}) is not directly compliant with {job.disc_type.value.upper()}; transcoding.")
 
+                out_audio_files = None
                 # If preview_video, write directly to output_dir
                 if job.output_mode == OutputMode.PREVIEW_VIDEO:
                     clean_name = (
@@ -615,9 +657,15 @@ class JobManager:
                     if is_bluray:
                         v_ext = ".hevc" if job.disc_type in (DiscType.BD66, DiscType.BD100, DiscType.BD128) and info.video_codec == "hevc" else ".264"
                         out_file = os.path.join(work_dir, f"title_{idx+1}{v_ext}")
-                        out_audio = os.path.join(work_dir, f"title_{idx+1}.ac3")
+                        if len(target_audio) > 1:
+                            out_audio_files = [os.path.join(work_dir, f"title_{idx+1}_track{a_i+1}.ac3") for a_i in range(len(target_audio))]
+                            transcoded_audio_files.append([{"path": p, "lang": lang} for p, lang in zip(out_audio_files, audio_langs)])
+                            out_audio = None
+                        else:
+                            out_audio = os.path.join(work_dir, f"title_{idx+1}.ac3")
+                            out_audio_files = None
+                            transcoded_audio_files.append(out_audio)
                         transcoded_files.append(out_file)
-                        transcoded_audio_files.append(out_audio)
                     else:
                         out_file = os.path.join(work_dir, f"title_{idx+1}{out_ext}")
                         out_audio = None
@@ -633,11 +681,6 @@ class JobManager:
 
                 effective_duration = dur_sec if (is_preview and dur_sec) else info.duration_sec
 
-                # Determine audio stream mapping from probed info
-                first_audio = info.audio_streams[0] if info.audio_streams else None
-                audio_idx = first_audio.index if first_audio else 1
-                audio_ch = first_audio.channels if first_audio else (6 if is_bluray else 2)
-
                 if is_bluray:
                     cmd = build_bluray_transcode_command(
                         input_file=info.path,
@@ -646,6 +689,9 @@ class JobManager:
                         output_audio=out_audio,
                         audio_stream_idx=audio_idx,
                         audio_channels=audio_ch,
+                        audio_stream_indices=audio_indices,
+                        audio_stream_channels=audio_channels_list,
+                        output_audio_files=out_audio_files,
                         use_gpu=job.use_gpu,
                         is_hdr=info.is_hdr,
                         seek_start_sec=seek_sec,
@@ -670,6 +716,8 @@ class JobManager:
                         aspect_ratio=job.aspect_ratio,
                         audio_stream_idx=audio_idx,
                         audio_channels=audio_ch,
+                        audio_stream_indices=audio_indices,
+                        audio_stream_channels=audio_channels_list,
                         seek_start_sec=seek_sec,
                         duration_sec=dur_sec,
                     )
@@ -686,6 +734,7 @@ class JobManager:
                         tv_standard=job.tv_standard,
                         aspect_ratio=job.aspect_ratio,
                         audio_channels=audio_ch,
+                        audio_stream_channels=audio_channels_list,
                     )
                     await self._run_ffmpeg_with_progress(
                         job_id, cmd_phase2, effective_duration, idx, len(media_infos), info.filename, phase_offset=50.0, phase_scale=0.5
@@ -703,6 +752,8 @@ class JobManager:
                         video_bitrate_kbps=budget.video_bitrate_kbps,
                         audio_stream_idx=audio_idx,
                         audio_channels=audio_ch,
+                        audio_stream_indices=audio_indices,
+                        audio_stream_channels=audio_channels_list,
                         tv_standard=job.tv_standard,
                         aspect_ratio=job.aspect_ratio,
                         use_gpu=job.use_gpu,
@@ -714,6 +765,7 @@ class JobManager:
                         self.log(job_id, f"Applying HDR/Dolby Vision -> SDR Filmic Tone-Mapping for {info.filename}")
                     self.log(job_id, f"Transcoding [{idx+1}/{len(media_infos)}]: {info.filename}")
                     await self._run_ffmpeg_with_progress(job_id, cmd, effective_duration, idx, len(media_infos), info.filename)
+
 
             # If PREVIEW_VIDEO, pipeline completes here
             if job.output_mode == OutputMode.PREVIEW_VIDEO:
@@ -1082,12 +1134,22 @@ class JobManager:
                     except Exception as e:
                         self.log(job_id, f"Warning: DVD menu creation encountered an exception: {e}; falling back to autoplay mode.", "warning")
 
-                # Collect subpicture track languages for the authored titleset
+                # Collect subpicture and audio track languages for the authored titleset
                 dvd_sub_langs = []
                 for title_subs in extracted_subtitles_by_title:
                     valid_subs = [s for s in title_subs if os.path.exists(s.get("path", ""))]
                     if len(valid_subs) > len(dvd_sub_langs):
                         dvd_sub_langs = [s["lang"] for s in valid_subs[:32]]
+
+                dvd_audio_langs = []
+                for info in media_infos:
+                    t_audio = info.audio_streams
+                    if job.selected_audio_indices is not None and len(job.selected_audio_indices) > 0:
+                        t_audio = [a for a in info.audio_streams if a.index in job.selected_audio_indices]
+                    if not t_audio and info.audio_streams:
+                        t_audio = [info.audio_streams[0]]
+                    if len(t_audio) > len(dvd_audio_langs):
+                        dvd_audio_langs = [a.language or "und" for a in t_audio[:8]]
 
                 # Write standard DVD subtitle palette
                 palette_content = generate_dvd_palette_rgb()
@@ -1101,11 +1163,13 @@ class JobManager:
                     menu_mode=job.menu_mode,
                     tv_standard=job.tv_standard,
                     subtitles_lang=dvd_sub_langs if dvd_sub_langs else None,
+                    audio_tracks_lang=dvd_audio_langs if dvd_audio_langs else None,
                     menu_vob=menu_vob_path,
                     aspect_ratio=job.aspect_ratio,
                     menu_end_action=job.menu_end_action,
                     palette_file=palette_path,
                 )
+
                 xml_path = os.path.join(work_dir, "dvdauthor.xml")
                 with open(xml_path, "w", encoding="utf-8") as xf:
                     xf.write(xml_content)

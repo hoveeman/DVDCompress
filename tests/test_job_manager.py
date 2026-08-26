@@ -1566,3 +1566,83 @@ def test_job_timestamps_and_metrics():
     assert job.duration_sec is None
     assert job.completed_size_bytes is None
 
+
+@pytest.mark.asyncio
+async def test_job_pipeline_multi_audio_selection(tmp_path, monkeypatch):
+    manager = JobManager()
+    scratch_dir = str(tmp_path / "scratch")
+    output_dir = str(tmp_path / "output")
+    media_file = str(tmp_path / "multi_audio_movie.mkv")
+    with open(media_file, "w") as f:
+        f.write("DUMMY")
+
+    fake_info = MediaInfo(
+        path=media_file,
+        filename="multi_audio_movie.mkv",
+        duration_sec=3600.0,
+        width=1920,
+        height=1080,
+        aspect_ratio="16:9",
+        frame_rate=23.976,
+        video_codec="h264",
+        is_hdr=False,
+        audio_streams=[
+            AudioStreamInfo(index=1, codec_name="ac3", channels=6, language="eng", title="English 5.1"),
+            AudioStreamInfo(index=2, codec_name="aac", channels=2, language="spa", title="Spanish Stereo"),
+            AudioStreamInfo(index=3, codec_name="aac", channels=2, language="fra", title="French Stereo"),
+        ],
+        subtitle_streams=[],
+        size_bytes=4000000000,
+    )
+
+    monkeypatch.setattr("dvdcompress.job_manager.probe_media_file", AsyncMock(return_value=fake_info))
+
+    executed_cmds = []
+
+    class FakeProc:
+        returncode = 0
+        async def wait(self): return 0
+        @property
+        def stderr(self):
+            class Stream:
+                async def read(self, n): return b""
+            return Stream()
+        def send_signal(self, sig): pass
+        def kill(self): pass
+        async def communicate(self): return (b"", b"")
+
+    async def fake_exec(*cmd, **kwargs):
+        executed_cmds.append(list(cmd))
+        if "-o" in cmd:
+            iso_target = cmd[cmd.index("-o") + 1]
+            if iso_target.endswith(".iso"):
+                with open(iso_target, "w") as f:
+                    f.write("ISO_BYTES")
+        return FakeProc()
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", fake_exec)
+
+    job_id = manager.create_job(
+        input_files=[media_file],
+        disc_type=DiscType.DVD5,
+        output_mode=OutputMode.ISO_ONLY,
+        output_name="multi_audio_dvd",
+        selected_audio_indices=[1, 2],
+    )
+
+    await manager.start_job(job_id, scratch_dir=scratch_dir, output_dir=output_dir)
+    await manager.active_tasks[job_id]
+
+    job = manager.get_job(job_id)
+    assert job.stage == JobStage.COMPLETED
+
+    # Check that ffmpeg was invoked with both audio stream 1 and stream 2
+    ffmpeg_cmds = [c for c in executed_cmds if c[0] == "ffmpeg"]
+    assert len(ffmpeg_cmds) > 0
+    main_ffmpeg = ffmpeg_cmds[0]
+    assert "-map" in main_ffmpeg
+    assert "0:1" in main_ffmpeg
+    assert "0:2" in main_ffmpeg
+    assert "0:3" not in main_ffmpeg
+
+
