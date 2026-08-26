@@ -376,3 +376,77 @@ def test_build_dvd_from_intermediate_command():
     assert "-vf setsar=32/27,setdar=16/9,format=yuv420p" in cmd_str
     assert "-c:a ac3 -ar 48000 -ac 2 -b:a 192k" in cmd_str
     assert "/output/movie.mpg" in cmd_str
+
+
+def test_dvd_transcode_multi_audio_command():
+    cmd = build_dvd_transcode_command(
+        input_file="/media/movie.mkv",
+        output_mpg="/tmp/title_1.mpg",
+        video_bitrate_kbps=4500,
+        audio_stream_indices=[1, 2],
+        audio_stream_channels=[6, 2],
+    )
+    cmd_str = " ".join(cmd)
+    assert "-map 0:v:0" in cmd_str
+    assert "-map 0:1" in cmd_str
+    assert "-map 0:2" in cmd_str
+    assert "-c:a:0 ac3" in cmd_str
+    assert "-b:a:0 384k" in cmd_str
+    assert "-c:a:1 ac3" in cmd_str
+    assert "-b:a:1 192k" in cmd_str
+
+
+def test_bluray_transcode_multi_audio_command():
+    cmd = build_bluray_transcode_command(
+        input_file="/media/movie.mkv",
+        output_video="/tmp/title_1.264",
+        video_bitrate_kbps=25000,
+        audio_stream_indices=[1, 2],
+        audio_stream_channels=[6, 2],
+        output_audio_files=["/tmp/title_1_track1.ac3", "/tmp/title_1_track2.ac3"],
+    )
+    assert "/tmp/title_1.264" in cmd
+    assert "/tmp/title_1_track1.ac3" in cmd
+    assert "/tmp/title_1_track2.ac3" in cmd
+    cmd_str = " ".join(cmd)
+    assert "-map 0:1" in cmd_str
+    assert "-map 0:2" in cmd_str
+    assert "-b:a 448k" in cmd_str
+    assert "-b:a 192k" in cmd_str
+
+
+def test_build_gpu_hdr_intermediate_multi_audio_command():
+    from dvdcompress.transcoder import build_gpu_hdr_intermediate_command
+    cmd = build_gpu_hdr_intermediate_command(
+        input_file="/media/movie.mkv",
+        output_file="/tmp/intermediate.mp4",
+        audio_stream_indices=[1, 2],
+        audio_stream_channels=[6, 2],
+    )
+    cmd_str = " ".join(cmd)
+    assert "-map 0:v:0" in cmd_str
+    assert "-map 0:1" in cmd_str
+    assert "-map 0:2" in cmd_str
+    assert "-c:a:0 ac3" in cmd_str
+    assert "-b:a:0 384k" in cmd_str
+    assert "-c:a:1 ac3" in cmd_str
+    assert "-b:a:1 192k" in cmd_str
+
+
+def test_build_dvd_from_intermediate_multi_audio_command():
+    from dvdcompress.transcoder import build_dvd_from_intermediate_command
+    cmd = build_dvd_from_intermediate_command(
+        intermediate_file="/tmp/intermediate.mp4",
+        output_mpg="/tmp/title_1.mpg",
+        video_bitrate_kbps=5000,
+        audio_stream_channels=[6, 2],
+    )
+    cmd_str = " ".join(cmd)
+    assert "-map 0:v:0" in cmd_str
+    assert "-map 0:a:0" in cmd_str
+    assert "-map 0:a:1" in cmd_str
+    assert "-c:a:0 ac3" in cmd_str
+    assert "-b:a:0 384k" in cmd_str
+    assert "-c:a:1 ac3" in cmd_str
+    assert "-b:a:1 192k" in cmd_str
+

@@ -18,6 +18,8 @@ def build_dvd_transcode_command(
     is_hdr: bool = False,
     seek_start_sec: Optional[float] = None,
     duration_sec: Optional[float] = None,
+    audio_stream_indices: Optional[List[int]] = None,
+    audio_stream_channels: Optional[List[int]] = None,
 ) -> List[str]:
     """Build FFmpeg command line arguments for DVD-Video compliant MPEG-2 transcoding.
 
@@ -25,14 +27,16 @@ def build_dvd_transcode_command(
         input_file: Source video file path.
         output_mpg: Target MPEG-2 program stream file path (.mpg).
         video_bitrate_kbps: Target video bitrate in kbps.
-        audio_stream_idx: Zero-based stream index of audio in input file.
-        audio_channels: Number of audio channels (e.g. 2 for stereo, 6 for 5.1).
+        audio_stream_idx: Zero-based stream index of audio in input file (fallback if audio_stream_indices not given).
+        audio_channels: Number of audio channels for fallback audio stream.
         tv_standard: TV standard (NTSC or PAL, AUTO defaults to NTSC).
         aspect_ratio: Display aspect ratio (16:9 or 4:3).
         use_gpu: Enable CUDA hardware acceleration for decoding.
         is_hdr: Enable HDR/Dolby Vision to SDR filmic tone-mapping and color conversion.
         seek_start_sec: Optional seek start timestamp in seconds for preview clipping.
         duration_sec: Optional duration in seconds for preview clipping.
+        audio_stream_indices: Optional list of zero-based stream indices for all selected audio tracks.
+        audio_stream_channels: Optional list of channel counts corresponding to audio_stream_indices.
 
     Returns:
         List of command-line arguments starting with 'ffmpeg'.
@@ -50,9 +54,23 @@ def build_dvd_transcode_command(
     if duration_sec is not None and duration_sec > 0:
         cmd.extend(["-t", str(duration_sec)])
 
-    # Video stream mapping and audio mapping
+    # Video stream mapping
     cmd.extend(["-map", "0:v:0"])
-    cmd.extend(["-map", f"0:{audio_stream_idx}"])
+
+    # Determine audio stream mapping
+    target_audio_indices = (
+        audio_stream_indices
+        if (audio_stream_indices is not None and len(audio_stream_indices) > 0)
+        else [audio_stream_idx]
+    )
+    target_audio_channels = (
+        audio_stream_channels
+        if (audio_stream_channels is not None and len(audio_stream_channels) == len(target_audio_indices))
+        else ([audio_channels] * len(target_audio_indices))
+    )
+
+    for a_idx in target_audio_indices:
+        cmd.extend(["-map", f"0:{a_idx}"])
 
     is_ntsc = tv_standard in (TVStandard.NTSC, TVStandard.AUTO)
     target = "ntsc-dvd" if is_ntsc else "pal-dvd"
@@ -90,12 +108,21 @@ def build_dvd_transcode_command(
     cmd.extend(["-aspect", aspect_ratio.value])
     cmd.extend(["-vf", vf_filter])
 
-    # Audio encoding
-    cmd.extend(["-c:a", "ac3", "-ar", "48000"])
-    if audio_channels >= 6:
-        cmd.extend(["-ac", "6", "-b:a", "384k"])
+    # Audio encoding for all mapped audio streams
+    if len(target_audio_indices) > 1:
+        for i, ch in enumerate(target_audio_channels):
+            cmd.extend(["-c:a:" + str(i), "ac3", "-ar:a:" + str(i), "48000"])
+            if ch >= 6:
+                cmd.extend(["-ac:a:" + str(i), "6", "-b:a:" + str(i), "384k"])
+            else:
+                cmd.extend(["-ac:a:" + str(i), "2", "-b:a:" + str(i), "192k"])
     else:
-        cmd.extend(["-ac", "2", "-b:a", "192k"])
+        ch = target_audio_channels[0] if target_audio_channels else audio_channels
+        cmd.extend(["-c:a", "ac3", "-ar", "48000"])
+        if ch >= 6:
+            cmd.extend(["-ac", "6", "-b:a", "384k"])
+        else:
+            cmd.extend(["-ac", "2", "-b:a", "192k"])
 
     cmd.append(output_mpg)
     return cmd
@@ -110,6 +137,8 @@ def build_gpu_hdr_intermediate_command(
     audio_channels: int = 2,
     seek_start_sec: Optional[float] = None,
     duration_sec: Optional[float] = None,
+    audio_stream_indices: Optional[List[int]] = None,
+    audio_stream_channels: Optional[List[int]] = None,
 ) -> List[str]:
     """Build FFmpeg command line for Phase 1 zero-copy GPU hardware HDR/Dolby Vision tone-mapping and downscaling.
 
@@ -131,7 +160,20 @@ def build_gpu_hdr_intermediate_command(
         cmd.extend(["-t", str(duration_sec)])
 
     cmd.extend(["-map", "0:v:0"])
-    cmd.extend(["-map", f"0:{audio_stream_idx}"])
+
+    target_audio_indices = (
+        audio_stream_indices
+        if (audio_stream_indices is not None and len(audio_stream_indices) > 0)
+        else [audio_stream_idx]
+    )
+    target_audio_channels = (
+        audio_stream_channels
+        if (audio_stream_channels is not None and len(audio_stream_channels) == len(target_audio_indices))
+        else ([audio_channels] * len(target_audio_indices))
+    )
+
+    for a_idx in target_audio_indices:
+        cmd.extend(["-map", f"0:{a_idx}"])
 
     is_ntsc = tv_standard in (TVStandard.NTSC, TVStandard.AUTO)
     final_w, final_h = (720, 480) if is_ntsc else (720, 576)
@@ -141,11 +183,20 @@ def build_gpu_hdr_intermediate_command(
 
     cmd.extend(["-c:v", "h264_nvenc", "-preset", "p2", "-cq", "16", "-vf", vf_filter])
 
-    cmd.extend(["-c:a", "ac3", "-ar", "48000"])
-    if audio_channels >= 6:
-        cmd.extend(["-ac", "6", "-b:a", "384k"])
+    if len(target_audio_indices) > 1:
+        for i, ch in enumerate(target_audio_channels):
+            cmd.extend(["-c:a:" + str(i), "ac3", "-ar:a:" + str(i), "48000"])
+            if ch >= 6:
+                cmd.extend(["-ac:a:" + str(i), "6", "-b:a:" + str(i), "384k"])
+            else:
+                cmd.extend(["-ac:a:" + str(i), "2", "-b:a:" + str(i), "192k"])
     else:
-        cmd.extend(["-ac", "2", "-b:a", "192k"])
+        ch = target_audio_channels[0] if target_audio_channels else audio_channels
+        cmd.extend(["-c:a", "ac3", "-ar", "48000"])
+        if ch >= 6:
+            cmd.extend(["-ac", "6", "-b:a", "384k"])
+        else:
+            cmd.extend(["-ac", "2", "-b:a", "192k"])
 
     cmd.append(output_file)
     return cmd
@@ -158,6 +209,7 @@ def build_dvd_from_intermediate_command(
     tv_standard: TVStandard = TVStandard.NTSC,
     aspect_ratio: AspectRatio = AspectRatio.RATIO_16_9,
     audio_channels: int = 2,
+    audio_stream_channels: Optional[List[int]] = None,
 ) -> List[str]:
     """Build fast CPU FFmpeg command to transcode 480p/576p SDR intermediate to DVD-Video MPEG-2."""
     is_ntsc = tv_standard in (TVStandard.NTSC, TVStandard.AUTO)
@@ -169,23 +221,43 @@ def build_dvd_from_intermediate_command(
     else:
         sar_val, dar_val = ("64/45", "16/9") if is_16_9 else ("16/15", "4/3")
 
+    target_audio_channels = (
+        audio_stream_channels
+        if (audio_stream_channels is not None and len(audio_stream_channels) > 0)
+        else [audio_channels]
+    )
+
     cmd = [
         "ffmpeg", "-y",
         "-i", intermediate_file,
         "-map", "0:v:0",
-        "-map", "0:a:0",
+    ]
+    for i in range(len(target_audio_channels)):
+        cmd.extend(["-map", f"0:a:{i}"])
+
+    cmd.extend([
         "-target", target,
         "-b:v", f"{video_bitrate_kbps}k",
         "-maxrate", "8500k",
         "-bufsize", "1835k",
         "-aspect", aspect_ratio.value,
         "-vf", f"setsar={sar_val},setdar={dar_val},format=yuv420p",
-        "-c:a", "ac3", "-ar", "48000",
-    ]
-    if audio_channels >= 6:
-        cmd.extend(["-ac", "6", "-b:a", "384k"])
+    ])
+
+    if len(target_audio_channels) > 1:
+        for i, ch in enumerate(target_audio_channels):
+            cmd.extend(["-c:a:" + str(i), "ac3", "-ar:a:" + str(i), "48000"])
+            if ch >= 6:
+                cmd.extend(["-ac:a:" + str(i), "6", "-b:a:" + str(i), "384k"])
+            else:
+                cmd.extend(["-ac:a:" + str(i), "2", "-b:a:" + str(i), "192k"])
     else:
-        cmd.extend(["-ac", "2", "-b:a", "192k"])
+        ch = target_audio_channels[0]
+        cmd.extend(["-c:a", "ac3", "-ar", "48000"])
+        if ch >= 6:
+            cmd.extend(["-ac", "6", "-b:a", "384k"])
+        else:
+            cmd.extend(["-ac", "2", "-b:a", "192k"])
 
     cmd.append(output_mpg)
     return cmd
@@ -204,6 +276,9 @@ def build_bluray_transcode_command(
     duration_sec: Optional[float] = None,
     fps: Optional[float] = None,
     output_m2ts: Optional[str] = None,
+    audio_stream_indices: Optional[List[int]] = None,
+    audio_stream_channels: Optional[List[int]] = None,
+    output_audio_files: Optional[List[str]] = None,
 ) -> List[str]:
     """Build FFmpeg command line arguments for Blu-ray compliant H.264/AVC transcoding."""
     target_video = output_video or output_m2ts or "output.m2ts"
@@ -245,8 +320,28 @@ def build_bluray_transcode_command(
 
     cmd.extend(["-vf", vf_filter])
 
-    if output_audio:
-        # Separate elementary streams mode
+    if output_audio_files and len(output_audio_files) > 0:
+        # Multiple separate elementary audio streams mode
+        target_audio_indices = (
+            audio_stream_indices
+            if (audio_stream_indices is not None and len(audio_stream_indices) == len(output_audio_files))
+            else [audio_stream_idx] * len(output_audio_files)
+        )
+        target_audio_channels = (
+            audio_stream_channels
+            if (audio_stream_channels is not None and len(audio_stream_channels) == len(output_audio_files))
+            else ([audio_channels] * len(output_audio_files))
+        )
+        cmd.append(target_video)
+        for a_idx, a_out, a_ch in zip(target_audio_indices, output_audio_files, target_audio_channels):
+            cmd.extend(["-map", f"0:{a_idx}", "-c:a", "ac3", "-ar", "48000"])
+            if a_ch >= 6:
+                cmd.extend(["-ac", "6", "-b:a", "448k"])
+            else:
+                cmd.extend(["-ac", "2", "-b:a", "192k"])
+            cmd.append(a_out)
+    elif output_audio:
+        # Single separate elementary stream mode
         cmd.append(target_video)
         cmd.extend(["-map", f"0:{audio_stream_idx}"])
         cmd.extend(["-c:a", "ac3", "-ar", "48000"])
@@ -257,18 +352,40 @@ def build_bluray_transcode_command(
         cmd.append(output_audio)
     else:
         # Single multiplexed container mode (e.g. preview video)
-        cmd.extend(["-map", f"0:{audio_stream_idx}"])
-        cmd.extend(["-c:a", "ac3", "-ar", "48000"])
-        if audio_channels >= 6:
-            cmd.extend(["-ac", "6", "-b:a", "448k"])
+        target_audio_indices = (
+            audio_stream_indices
+            if (audio_stream_indices is not None and len(audio_stream_indices) > 0)
+            else [audio_stream_idx]
+        )
+        target_audio_channels = (
+            audio_stream_channels
+            if (audio_stream_channels is not None and len(audio_stream_channels) == len(target_audio_indices))
+            else ([audio_channels] * len(target_audio_indices))
+        )
+        if len(target_audio_indices) > 1:
+            for i, (a_idx, a_ch) in enumerate(zip(target_audio_indices, target_audio_channels)):
+                cmd.extend(["-map", f"0:{a_idx}"])
+                cmd.extend(["-c:a:" + str(i), "ac3", "-ar:a:" + str(i), "48000"])
+                if a_ch >= 6:
+                    cmd.extend(["-ac:a:" + str(i), "6", "-b:a:" + str(i), "448k"])
+                else:
+                    cmd.extend(["-ac:a:" + str(i), "2", "-b:a:" + str(i), "192k"])
         else:
-            cmd.extend(["-ac", "2", "-b:a", "192k"])
+            a_idx = target_audio_indices[0]
+            a_ch = target_audio_channels[0]
+            cmd.extend(["-map", f"0:{a_idx}"])
+            cmd.extend(["-c:a", "ac3", "-ar", "48000"])
+            if a_ch >= 6:
+                cmd.extend(["-ac", "6", "-b:a", "448k"])
+            else:
+                cmd.extend(["-ac", "2", "-b:a", "192k"])
         cmd.append(target_video)
 
     return cmd
 
 
 def parse_ffmpeg_progress_line(line: str) -> Dict[str, Any]:
+
     """Parse FFmpeg stderr progress output line.
 
     Args:
