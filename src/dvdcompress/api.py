@@ -109,6 +109,7 @@ class CreateJobRequest(BaseModel):
     burn_speed: int = 4
     use_gpu: bool = True
     passthrough: bool = False
+    selected_audio_indices: Optional[List[int]] = None
     selected_subtitle_indices: Optional[List[int]] = None
 
 
@@ -163,7 +164,9 @@ class CreatePreviewRequest(BaseModel):
     use_gpu: bool = True
     passthrough: bool = False
     custom_bitrate_kbps: Optional[int] = None
+    selected_audio_indices: Optional[List[int]] = None
     selected_subtitle_indices: Optional[List[int]] = None
+
 
 
 
@@ -453,8 +456,10 @@ async def create_job(req: CreateJobRequest):
         burn_speed=req.burn_speed,
         use_gpu=req.use_gpu,
         passthrough=req.passthrough,
+        selected_audio_indices=req.selected_audio_indices,
         selected_subtitle_indices=req.selected_subtitle_indices,
     )
+
     await job_manager.start_job(
         job_id, scratch_dir=get_scratch_dir(), output_dir=get_output_dir()
     )
@@ -518,6 +523,7 @@ async def create_preview(req: CreatePreviewRequest):
         menu_end_action=req.menu_end_action,
         use_gpu=req.use_gpu,
         passthrough=req.passthrough,
+        selected_audio_indices=req.selected_audio_indices,
         selected_subtitle_indices=req.selected_subtitle_indices,
     )
 
@@ -605,8 +611,10 @@ async def retry_job_endpoint(job_id: str):
         burn_speed=job.burn_speed,
         use_gpu=job.use_gpu,
         passthrough=job.passthrough,
+        selected_audio_indices=job.selected_audio_indices,
         selected_subtitle_indices=job.selected_subtitle_indices,
     )
+
     await job_manager.start_job(
         new_job_id, scratch_dir=get_scratch_dir(), output_dir=get_output_dir()
     )

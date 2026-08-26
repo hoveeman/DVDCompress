@@ -105,6 +105,9 @@ class ProjectConfig(BaseModel):
     disc_label: str = "DVD_VIDEO"
     burn_device: Optional[str] = None
     burn_speed: int = 4
+    selected_audio_indices: Optional[List[int]] = None
+    selected_subtitle_indices: Optional[List[int]] = None
+
 
 
 class ComplexityAnalysisRequest(BaseModel):

@@ -91,6 +91,7 @@ class Job(BaseModel):
     burn_speed: int = 4
     use_gpu: bool = True
     passthrough: bool = False
+    selected_audio_indices: Optional[List[int]] = None
     selected_subtitle_indices: Optional[List[int]] = None
 
     current_file_idx: int = 0
@@ -162,16 +163,23 @@ class JobManager:
                                 self.pause_events[job.job_id].clear()
                             else:
                                 self.pause_events[job.job_id].set()
+
                     except Exception:
                         pass
         except Exception:
             pass
 
+    def get_all_jobs(self) -> List[Job]:
+        return sorted(self.jobs.values(), key=lambda j: j.created_at, reverse=True)
+
+    def get_queued_jobs(self) -> List[Job]:
+        return [j for j in self.jobs.values() if j.stage == JobStage.QUEUED]
 
     def get_active_jobs_count(self) -> int:
-        """Return the number of currently active jobs in running stages."""
+        """Return the count of jobs currently actively executing tasks."""
         return sum(
-            1 for j in self.jobs.values()
+            1
+            for j in self.jobs.values()
             if j.job_id in self.active_tasks and j.stage != JobStage.PAUSED
         )
 
@@ -189,6 +197,7 @@ class JobManager:
         burn_speed: int = 4,
         use_gpu: bool = True,
         passthrough: bool = False,
+        selected_audio_indices: Optional[List[int]] = None,
         selected_subtitle_indices: Optional[List[int]] = None,
     ) -> str:
         job_id = str(uuid.uuid4())[:8]
@@ -207,9 +216,11 @@ class JobManager:
             burn_speed=burn_speed,
             use_gpu=use_gpu,
             passthrough=passthrough,
+            selected_audio_indices=selected_audio_indices,
             selected_subtitle_indices=selected_subtitle_indices,
             total_files=len(input_files),
         )
+
         self.jobs[job_id] = job
         self.pause_events[job_id] = asyncio.Event()
         self.pause_events[job_id].set()

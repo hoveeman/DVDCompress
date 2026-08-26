@@ -42,6 +42,8 @@ settings = Settings()
 
 class AppSettings(BaseModel):
     max_concurrent_jobs: int = Field(default=5, ge=1, le=20)
+    preferred_audio_language: str = Field(default="eng")
+    prefer_surround_audio: bool = Field(default=True)
 
 
 _current_settings: Optional[AppSettings] = None

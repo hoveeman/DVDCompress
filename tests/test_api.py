@@ -608,23 +608,64 @@ def test_api_settings_get_and_post():
     data = res.json()
     assert "max_concurrent_jobs" in data
     assert data["max_concurrent_jobs"] >= 1
+    assert "preferred_audio_language" in data
+    assert "prefer_surround_audio" in data
 
     # Update settings
-    res = client.post("/api/settings", json={"max_concurrent_jobs": 7})
+    res = client.post("/api/settings", json={
+        "max_concurrent_jobs": 7,
+        "preferred_audio_language": "jpn",
+        "prefer_surround_audio": False,
+    })
     assert res.status_code == 200
     assert res.json()["settings"]["max_concurrent_jobs"] == 7
+    assert res.json()["settings"]["preferred_audio_language"] == "jpn"
+    assert res.json()["settings"]["prefer_surround_audio"] is False
 
     # Verify update persisted
     res2 = client.get("/api/settings")
     assert res2.status_code == 200
     assert res2.json()["max_concurrent_jobs"] == 7
+    assert res2.json()["preferred_audio_language"] == "jpn"
+    assert res2.json()["prefer_surround_audio"] is False
 
     # Validation error for invalid range
     res_err = client.post("/api/settings", json={"max_concurrent_jobs": 0})
     assert res_err.status_code == 422 or res_err.status_code == 400
 
-    # Reset back to 5
-    client.post("/api/settings", json={"max_concurrent_jobs": 5})
+    # Reset back to defaults
+    client.post("/api/settings", json={
+        "max_concurrent_jobs": 5,
+        "preferred_audio_language": "eng",
+        "prefer_surround_audio": True,
+    })
+
+
+def test_api_create_job_with_selected_audio(tmp_path, monkeypatch):
+    test_media = tmp_path / "test_audio.mkv"
+    test_media.write_bytes(b"dummy")
+
+    async def fake_start(job_id, scratch_dir, output_dir):
+        pass
+
+    monkeypatch.setattr(job_manager, "start_job", fake_start)
+
+    res = client.post("/api/jobs", json={
+        "input_files": [str(test_media)],
+        "disc_type": "dvd5",
+        "output_mode": "iso_only",
+        "output_name": "audio_test",
+        "selected_audio_indices": [1, 2],
+        "selected_subtitle_indices": [3],
+    })
+    assert res.status_code == 200
+    job_id = res.json()["job_id"]
+    job = job_manager.get_job(job_id)
+    assert job is not None
+    assert job.selected_audio_indices == [1, 2]
+    assert job.selected_subtitle_indices == [3]
+
+
 
 
 def test_api_delete_job_success():
