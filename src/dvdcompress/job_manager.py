@@ -679,8 +679,12 @@ class JobManager:
                     await self._run_ffmpeg_with_progress(
                         job_id, cmd_phase2, effective_duration, idx, len(media_infos), info.filename, phase_offset=50.0, phase_scale=0.5
                     )
-
-                    self.log(job_id, f"Preserving intermediate SDR file in scratch directory: {intermediate_sdr_file}")
+                    # Clean up the intermediate SDR file to free scratch disk space immediately
+                    if os.path.exists(intermediate_sdr_file):
+                        try:
+                            os.remove(intermediate_sdr_file)
+                        except OSError:
+                            pass
                 else:
                     cmd = build_dvd_transcode_command(
                         input_file=info.path,

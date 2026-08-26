@@ -1530,7 +1530,9 @@ async def test_job_pipeline_dvd_2phase_gpu_hdr_transcode(tmp_path, monkeypatch):
     # Verify both phases were logged
     assert any("Applying GPU Phase 1/2: Fast Hardware Tone-Mapping" in log for log in job.logs)
     assert any("Applying Phase 2/2: Fast DVD MPEG-2 Encoding" in log for log in job.logs)
-    assert any("Preserving intermediate SDR file in scratch directory" in log for log in job.logs)
+
+    # Verify scratch work directory is cleaned up
+    assert not os.path.exists(os.path.join(scratch_dir, job_id))
 
     # Verify Phase 1 (GPU H.264 intermediate) was executed
     phase1_cmds = [c for c in executed_cmds if c[0] == "ffmpeg" and "h264_nvenc" in c]
