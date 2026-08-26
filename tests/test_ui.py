@@ -355,6 +355,29 @@ def test_job_history_table_headers_and_pagination_ui():
     assert "jobs-pagination-buttons" in js
 
 
+def test_audio_track_ui_elements():
+    # 1. HTML Settings Modal & Navigation Tab
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    html = res_html.text
+    assert 'id="tab-btn-settings"' in html or 'id="btn-open-settings"' in html
+    assert 'id="modal-settings"' in html
+    assert 'id="setting-audio-lang"' in html
+    assert 'id="setting-prefer-surround"' in html
+    assert 'id="btn-save-settings"' in html
+
+    # 2. JavaScript Wiring for Audio Track Selection & Settings
+    res_js = client.get("/js/app.js")
+    assert res_js.status_code == 200
+    js = res_js.text
+    assert "audio-track-checkbox" in js
+    assert "selected_audio_indices" in js
+    assert "btn-audio-default" in js
+    assert "btn-audio-all" in js
+    assert "applyDefaultAudioSelection" in js
+
+
+
 
 
 

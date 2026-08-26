@@ -24,6 +24,11 @@
       use_gpu: true,
       passthrough: false,
     },
+    settings: {
+      max_concurrent_jobs: 5,
+      preferred_audio_language: 'eng',
+      prefer_surround_audio: true,
+    },
     preview: {
       preview_mode: 'preview_video',
     },
@@ -45,6 +50,7 @@
     terminalLogs: [],
     autoScroll: true,
   };
+
 
 
   // Helper: Format Seconds to HH:MM:SS
@@ -111,11 +117,18 @@
     const navButtons = document.querySelectorAll('.nav-tab');
     navButtons.forEach(btn => {
       btn.addEventListener('click', () => {
+        if (btn.id === 'tab-btn-settings') {
+          openSettingsModal();
+          return;
+        }
         const targetViewId = btn.getAttribute('data-target');
-        switchTab(targetViewId);
+        if (targetViewId) {
+          switchTab(targetViewId);
+        }
       });
     });
   }
+
 
   function switchTab(viewId) {
     document.querySelectorAll('.nav-tab').forEach(b => {
@@ -590,6 +603,50 @@
   }
 
   // Probing & Playlist Management
+  // Helper: Apply smart audio track selection based on user settings
+  function applyDefaultAudioSelection(mediaInfo) {
+    const streams = mediaInfo.audio_streams || [];
+    if (streams.length === 0) return;
+
+    const prefLang = (state.settings && state.settings.preferred_audio_language) ? state.settings.preferred_audio_language.toLowerCase().trim() : 'eng';
+    const prefSurround = (state.settings && state.settings.prefer_surround_audio !== undefined) ? state.settings.prefer_surround_audio : true;
+
+    function langMatches(streamLang, pref) {
+      if (!streamLang || !pref) return false;
+      const s = streamLang.toLowerCase().trim();
+      const p = pref.toLowerCase().trim();
+      if (p === 'und' || p === 'any' || p === 'all') return true;
+      if (s === p) return true;
+      if (p === 'eng' && (s === 'en' || s === 'eng' || s === 'english')) return true;
+      if (p === 'spa' && (s === 'es' || s === 'spa' || s === 'spanish')) return true;
+      if (p === 'fra' && (s === 'fr' || s === 'fra' || s === 'fre' || s === 'french')) return true;
+      if (p === 'deu' && (s === 'de' || s === 'deu' || s === 'ger' || s === 'german')) return true;
+      if (p === 'ita' && (s === 'it' || s === 'ita' || s === 'italian')) return true;
+      if (p === 'jpn' && (s === 'ja' || s === 'jpn' || s === 'japanese')) return true;
+      if (p === 'zho' && (s === 'zh' || s === 'zho' || s === 'chi' || s === 'chinese')) return true;
+      if (p === 'por' && (s === 'pt' || s === 'por' || s === 'portuguese')) return true;
+      if (p === 'rus' && (s === 'ru' || s === 'rus' || s === 'russian')) return true;
+      if (p === 'kor' && (s === 'ko' || s === 'kor' || s === 'korean')) return true;
+      if (p === 'nld' && (s === 'nl' || s === 'nld' || s === 'dut' || s === 'dutch')) return true;
+      return s.startsWith(p) || p.startsWith(s);
+    }
+
+    let candidates = streams.filter(s => langMatches(s.language, prefLang));
+    if (candidates.length === 0) {
+      candidates = [...streams];
+    }
+
+    if (prefSurround) {
+      candidates.sort((a, b) => (b.channels || 0) - (a.channels || 0) || (b.bitrate || 0) - (a.bitrate || 0));
+    }
+
+    const chosenStream = candidates[0] || streams[0];
+
+    streams.forEach(s => {
+      s._selected = (s.index === chosenStream.index);
+    });
+  }
+
   async function addFileToPlaylist(filePath) {
     // Check if already in playlist
     if (state.playlist.some(item => item.path === filePath)) {
@@ -613,6 +670,7 @@
 
       const mediaInfo = await res.json();
       mediaInfo._expanded = false;
+      applyDefaultAudioSelection(mediaInfo);
       state.playlist.push(mediaInfo);
       
       renderPlaylist();
@@ -668,7 +726,7 @@
       const itemCard = document.createElement('div');
       itemCard.className = 'playlist-item';
 
-      const audioSummary = (item.audio_streams || []).map(a => `${a.codec_name} (${a.channel_layout || a.channels + 'ch'})`).join(', ') || 'None';
+      const audioCount = (item.audio_streams || []).length;
       const subCount = (item.subtitle_streams || []).length;
 
       itemCard.innerHTML = `
@@ -704,15 +762,26 @@
 
         ${item._expanded ? `
           <div class="stream-inspector-content">
-            <div class="stream-group-title">Audio Streams (${(item.audio_streams || []).length})</div>
-            ${(item.audio_streams || []).map(a => `
-              <div class="stream-item">
-                <span class="stream-name">#${a.index}: ${a.codec_name.toUpperCase()} (${a.channel_layout || a.channels + 'ch'}) [${a.language || 'und'}]</span>
-                <span class="stream-meta">${a.title || 'Track ' + a.index} ${a.bitrate ? '• ' + Math.round(a.bitrate / 1000) + ' kbps' : ''}</span>
+            <div class="stream-group-header" style="display: flex; align-items: center; justify-content: space-between;">
+              <div class="stream-group-title" style="margin: 0;">Audio Streams (${audioCount})</div>
+              ${audioCount > 0 ? `
+                <div class="stream-group-actions" style="display: flex; align-items: center; gap: 6px;">
+                  <button type="button" class="btn btn-secondary btn-xs btn-audio-default" title="Reset to preferred default audio track">Select Default</button>
+                  <button type="button" class="btn btn-secondary btn-xs btn-audio-all" title="Select all audio tracks for this title">Select All</button>
+                </div>
+              ` : ''}
+            </div>
+            ${audioCount > 0 ? (item.audio_streams || []).map(a => `
+              <div class="stream-item" style="display: flex; align-items: center; justify-content: space-between;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; margin: 0;">
+                  <input type="checkbox" class="audio-track-checkbox" data-track-index="${a.index}" ${a._selected !== false ? 'checked' : ''} style="cursor: pointer;" />
+                  <span class="stream-name">#${a.index}: ${a.codec_name.toUpperCase()} (${a.channel_layout || a.channels + 'ch'}) [${(a.language || 'und').toUpperCase()}]</span>
+                </label>
+                <span class="stream-meta">${escapeHtml(a.title || 'Track ' + a.index)} ${a.bitrate ? '• ' + Math.round(a.bitrate / 1000) + ' kbps' : ''}</span>
               </div>
-            `).join('')}
+            `).join('') : '<div style="color: var(--text-tertiary);">No audio tracks found.</div>'}
             
-            <div class="stream-group-header" style="display: flex; align-items: center; justify-content: space-between; margin-top: 6px;">
+            <div class="stream-group-header" style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px;">
               <div class="stream-group-title" style="margin: 0;">Subtitle Streams (${subCount})</div>
               ${subCount > 0 ? `
                 <div class="stream-group-actions" style="display: flex; align-items: center; gap: 6px;">
@@ -743,6 +812,36 @@
       });
       itemCard.querySelector('.btn-item-remove')?.addEventListener('click', () => removePlaylistItem(idx));
 
+      // Per-title audio selection actions
+      itemCard.querySelector('.btn-audio-default')?.addEventListener('click', () => {
+        applyDefaultAudioSelection(item);
+        renderPlaylist();
+        recalculateBudget();
+      });
+      itemCard.querySelector('.btn-audio-all')?.addEventListener('click', () => {
+        (item.audio_streams || []).forEach(a => { a._selected = true; });
+        renderPlaylist();
+        recalculateBudget();
+      });
+
+      // Audio track selection listeners
+      itemCard.querySelectorAll('.audio-track-checkbox').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          const trackIdx = parseInt(e.target.dataset.trackIndex, 10);
+          const audioStream = (item.audio_streams || []).find(a => a.index === trackIdx);
+          if (audioStream) {
+            audioStream._selected = e.target.checked;
+          }
+          // Ensure at least one audio track remains selected for playback
+          const anySelected = (item.audio_streams || []).some(a => a._selected !== false);
+          if (!anySelected && (item.audio_streams || []).length > 0) {
+            item.audio_streams[0]._selected = true;
+            renderPlaylist();
+          }
+          recalculateBudget();
+        });
+      });
+
       // Per-title subtitle selection actions
       itemCard.querySelector('.btn-subs-none')?.addEventListener('click', () => {
         (item.subtitle_streams || []).forEach(s => { s._excluded = true; });
@@ -764,6 +863,7 @@
           updateGlobalSubtitleButtonState();
         });
       });
+
 
       container.appendChild(itemCard);
     });
@@ -865,20 +965,23 @@
 
     const totalDuration = state.playlist.reduce((acc, item) => acc + (item.duration_sec || 0), 0);
     
-    // Collect target audio bitrates for each title (1 AC3 audio track per title: 384 kbps for 5.1ch on DVD, 448 kbps for 5.1ch on BD, 192 kbps for stereo)
+    // Collect target audio bitrates for each selected audio track across all playlist items
     const isDvd = (state.config.disc_type === 'dvd5' || state.config.disc_type === 'dvd9');
-    let totalTargetAudioKbps = 0;
+    const audioTracksKbps = [];
     state.playlist.forEach(item => {
-      const firstAudio = (item.audio_streams && item.audio_streams.length > 0) ? item.audio_streams[0] : null;
-      const channels = firstAudio ? (firstAudio.channels || 2) : (isDvd ? 2 : 6);
-      if (channels >= 6) {
-        totalTargetAudioKbps += (isDvd ? 384 : 448);
+      const selected = (item.audio_streams || []).filter(a => a._selected !== false);
+      const targetAudio = selected.length > 0 ? selected : ((item.audio_streams && item.audio_streams.length > 0) ? [item.audio_streams[0]] : []);
+      if (targetAudio.length > 0) {
+        targetAudio.forEach(a => {
+          const channels = a.channels || 2;
+          audioTracksKbps.push(channels >= 6 ? (isDvd ? 384 : 448) : 192);
+        });
       } else {
-        totalTargetAudioKbps += 192;
+        audioTracksKbps.push(192);
       }
     });
 
-    const avgTargetAudioKbps = Math.max(192, Math.round(totalTargetAudioKbps / state.playlist.length));
+    if (audioTracksKbps.length === 0) audioTracksKbps.push(192);
 
     try {
       const res = await fetch('/api/calculate', {
@@ -887,10 +990,11 @@
         body: JSON.stringify({
           total_duration_sec: totalDuration,
           disc_type: state.config.disc_type,
-          audio_tracks_kbps: [avgTargetAudioKbps],
+          audio_tracks_kbps: audioTracksKbps,
           video_count: state.playlist.length,
         }),
       });
+
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const budget = await res.json();
@@ -1276,6 +1380,15 @@
       });
     });
 
+    const selectedAudioIndices = [];
+    state.playlist.forEach(item => {
+      (item.audio_streams || []).forEach(a => {
+        if (a._selected !== false) {
+          selectedAudioIndices.push(a.index);
+        }
+      });
+    });
+
     const payload = {
       input_files: state.playlist.map(item => item.path),
       disc_type: state.config.disc_type,
@@ -1289,8 +1402,10 @@
       burn_speed: state.config.burn_speed || 4,
       use_gpu: state.config.use_gpu,
       passthrough: state.config.passthrough,
+      selected_audio_indices: selectedAudioIndices,
       selected_subtitle_indices: selectedSubtitleIndices,
     };
+
 
     const btnStart = document.getElementById('btn-start-project');
     if (btnStart) btnStart.disabled = true;
@@ -1455,6 +1570,13 @@
       }
     });
 
+    const selectedAudioIndices = [];
+    (media.audio_streams || []).forEach(a => {
+      if (a._selected !== false) {
+        selectedAudioIndices.push(a.index);
+      }
+    });
+
     const payload = {
       input_file: media.path,
       preview_mode: state.preview.preview_mode,
@@ -1466,8 +1588,10 @@
       menu_end_action: state.config.menu_end_action || 'menu',
       use_gpu: state.config.use_gpu,
       passthrough: state.config.passthrough,
+      selected_audio_indices: selectedAudioIndices,
       selected_subtitle_indices: selectedSubtitleIndices,
     };
+
 
     closePreviewModal();
 
@@ -1987,17 +2111,27 @@
         await addFileToPlaylist(filePath);
       }
 
-      // Restore selected subtitle indices if provided
-      if (Array.isArray(job.selected_subtitle_indices) && job.selected_subtitle_indices.length > 0 && state.playlist.length > 0) {
-        const firstItem = state.playlist[0];
-        if (firstItem && Array.isArray(firstItem.subtitle_streams)) {
-          firstItem.subtitle_streams.forEach(sub => {
-            sub.is_selected = job.selected_subtitle_indices.includes(sub.index);
+      // Restore selected audio indices if provided
+      if (Array.isArray(job.selected_audio_indices) && job.selected_audio_indices.length > 0 && state.playlist.length > 0) {
+        state.playlist.forEach(item => {
+          (item.audio_streams || []).forEach(a => {
+            a._selected = job.selected_audio_indices.includes(a.index);
           });
-          renderPlaylist();
-        }
+        });
+        renderPlaylist();
+      }
+
+      // Restore selected subtitle indices if provided
+      if (Array.isArray(job.selected_subtitle_indices) && state.playlist.length > 0) {
+        state.playlist.forEach(item => {
+          (item.subtitle_streams || []).forEach(sub => {
+            sub._excluded = !job.selected_subtitle_indices.includes(sub.index);
+          });
+        });
+        renderPlaylist();
       }
     }
+
 
     recalculateBudget();
     switchTab('view-authoring');
@@ -2030,9 +2164,11 @@
       const res = await fetch('/api/settings');
       if (!res.ok) return;
       const data = await res.json();
-      if (data && data.max_concurrent_jobs) {
-        state.maxConcurrentJobs = data.max_concurrent_jobs;
+      if (data) {
+        state.settings = data;
+        state.maxConcurrentJobs = data.max_concurrent_jobs || 5;
         updateSlotsDisplay();
+        updateSettingsForm();
       }
     } catch (err) {
       console.error('Failed to load settings:', err);
@@ -2061,6 +2197,8 @@
         body: JSON.stringify({ max_concurrent_jobs: newLimit }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const updated = await res.json();
+      state.settings = updated;
       showToast(`Concurrent job slots set to ${newLimit}`, 'info');
       loadJobHistory();
     } catch (err) {
@@ -2077,6 +2215,85 @@
     if (btnInc) {
       btnInc.addEventListener('click', () => updateMaxConcurrentJobs(1));
     }
+  }
+
+  // Settings Modal Functions
+  function openSettingsModal() {
+    const modal = document.getElementById('modal-settings');
+    if (modal) {
+      updateSettingsForm();
+      modal.style.display = 'flex';
+    }
+  }
+
+  function closeSettingsModal() {
+    const modal = document.getElementById('modal-settings');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+  }
+
+  function updateSettingsForm() {
+    const langSelect = document.getElementById('setting-audio-lang');
+    const surroundToggle = document.getElementById('setting-prefer-surround');
+    const maxConcurrentInput = document.getElementById('setting-max-concurrent');
+    if (langSelect && state.settings) {
+      langSelect.value = state.settings.preferred_audio_language || 'eng';
+    }
+    if (surroundToggle && state.settings) {
+      surroundToggle.checked = (state.settings.prefer_surround_audio !== undefined) ? state.settings.prefer_surround_audio : true;
+    }
+    if (maxConcurrentInput) {
+      maxConcurrentInput.value = state.maxConcurrentJobs || 5;
+    }
+  }
+
+  async function saveSettingsModal() {
+    const langSelect = document.getElementById('setting-audio-lang');
+    const surroundToggle = document.getElementById('setting-prefer-surround');
+    const maxConcurrentInput = document.getElementById('setting-max-concurrent');
+
+    const newLang = langSelect ? langSelect.value : 'eng';
+    const newSurround = surroundToggle ? surroundToggle.checked : true;
+    const newConcurrent = maxConcurrentInput ? Math.max(1, Math.min(20, parseInt(maxConcurrentInput.value, 10) || 5)) : 5;
+
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          preferred_audio_language: newLang,
+          prefer_surround_audio: newSurround,
+          max_concurrent_jobs: newConcurrent,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const updated = await res.json();
+      state.settings = updated;
+      state.maxConcurrentJobs = updated.max_concurrent_jobs || newConcurrent;
+      updateSlotsDisplay();
+      closeSettingsModal();
+      showToast('Settings saved successfully', 'success');
+
+      // Update audio selection on current playlist
+      if (state.playlist.length > 0) {
+        state.playlist.forEach(applyDefaultAudioSelection);
+        renderPlaylist();
+        recalculateBudget();
+      }
+    } catch (err) {
+      showToast(`Failed to save settings: ${err.message}`, 'error');
+    }
+  }
+
+  function initSettingsModal() {
+    const btnClose = document.getElementById('btn-close-settings-modal');
+    const btnCancel = document.getElementById('btn-cancel-settings-modal');
+    const btnSave = document.getElementById('btn-save-settings');
+
+    if (btnClose) btnClose.addEventListener('click', closeSettingsModal);
+    if (btnCancel) btnCancel.addEventListener('click', closeSettingsModal);
+    if (btnSave) btnSave.addEventListener('click', saveSettingsModal);
   }
 
   async function loadAppVersion() {
@@ -2101,6 +2318,7 @@
     initBrowserControls();
     initPlaylistControls();
     initSlotsControl();
+    initSettingsModal();
 
     // Initial Data Fetching
     loadAppVersion();
@@ -2124,4 +2342,5 @@
   }
 
 })();
+
 

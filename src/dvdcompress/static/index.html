@@ -102,6 +102,14 @@
         </svg>
         Burn Existing ISO
       </button>
+
+      <button class="nav-tab" id="tab-btn-settings" role="button" aria-label="Application Settings" title="Configure audio language preferences and limits">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        Settings
+      </button>
     </div>
   </nav>
 
@@ -751,7 +759,75 @@
     </div>
   </div>
 
+  <!-- App Settings Modal -->
+  <div class="modal-overlay" id="modal-settings" style="display: none;">
+    <div class="modal-card" style="max-width: 540px;">
+      <div class="modal-header">
+        <div class="card-title-group">
+          <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <div>
+            <h3 class="card-title">Application Settings</h3>
+            <p class="card-subtitle">Default audio track preferences &amp; concurrency limits</p>
+          </div>
+        </div>
+        <button class="modal-close" id="btn-close-settings-modal" type="button" aria-label="Close modal">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label" for="setting-audio-lang">Preferred Audio Language</label>
+          <select id="setting-audio-lang" class="form-select">
+            <option value="eng">English (eng / en)</option>
+            <option value="spa">Spanish (spa / es)</option>
+            <option value="fra">French (fra / fre / fr)</option>
+            <option value="deu">German (deu / ger / de)</option>
+            <option value="ita">Italian (ita / it)</option>
+            <option value="jpn">Japanese (jpn / ja)</option>
+            <option value="zho">Chinese (zho / chi / zh)</option>
+            <option value="por">Portuguese (por / pt)</option>
+            <option value="rus">Russian (rus / ru)</option>
+            <option value="kor">Korean (kor / ko)</option>
+            <option value="nld">Dutch (nld / dut / nl)</option>
+            <option value="und">First Available / Any</option>
+          </select>
+          <span class="form-hint" style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: 4px; display: block;">
+            Newly added media files will automatically select the audio track matching this language.
+          </span>
+        </div>
+
+        <div class="form-group" style="margin-top: 14px;">
+          <label class="toggle-control" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: var(--bg-surface-elevated, rgba(255,255,255,0.03)); padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border-subtle, rgba(255,255,255,0.08));">
+            <div style="padding-right: 12px;">
+              <span class="toggle-label" style="font-weight: 500; font-size: 0.875rem; display: block;">Prefer Surround Audio (5.1 / 7.1)</span>
+              <span class="toggle-desc" style="display: block; font-size: 0.75rem; color: var(--text-tertiary); margin-top: 2px;">
+                Prioritize 5.1/7.1 surround sound tracks over stereo when available in the preferred language.
+              </span>
+            </div>
+            <input type="checkbox" id="setting-prefer-surround" class="toggle-checkbox" checked style="cursor: pointer; width: 18px; height: 18px;" />
+          </label>
+        </div>
+
+        <div class="form-group" style="margin-top: 14px;">
+          <label class="form-label" for="setting-max-concurrent">Maximum Concurrent Transcodes</label>
+          <input type="number" id="setting-max-concurrent" class="form-input" min="1" max="20" value="5" />
+          <span class="form-hint" style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: 4px; display: block;">
+            Number of jobs that can transcode simultaneously before subsequent jobs queue.
+          </span>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btn-cancel-settings-modal" type="button">Cancel</button>
+        <button class="btn btn-primary" id="btn-save-settings" type="button">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
+
   <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
   <!-- JavaScript Client App -->
