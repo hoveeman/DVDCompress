@@ -192,9 +192,8 @@ def generate_dvdauthor_xml(
 
     has_menu = (menu_mode == MenuMode.MENU and menu_vob is not None)
 
-    xml_lines = ['<dvdauthor dest="VIDEO_TS" jumppad="1">']
-
     if has_menu:
+        xml_lines = ['<dvdauthor dest="VIDEO_TS" jumppad="1">']
         menu_pgc_attr = f' entry="title" palette="{palette_file}"' if palette_file else ' entry="title"'
         xml_lines.extend([
             '  <vmgm>',
@@ -213,7 +212,12 @@ def generate_dvdauthor_xml(
             '  </vmgm>',
         ])
     else:
-        xml_lines.append('  <vmgm />')
+        xml_lines = [
+            '<dvdauthor dest="VIDEO_TS">',
+            '  <vmgm>',
+            '    <fpc>jump title 1;</fpc>',
+            '  </vmgm>',
+        ]
 
     xml_lines.append('  <titleset>')
 

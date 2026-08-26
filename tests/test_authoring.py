@@ -17,7 +17,10 @@ def test_dvdauthor_xml_single_title_autoplay():
         menu_mode=MenuMode.AUTOPLAY,
         tv_standard=TVStandard.NTSC,
     )
-    assert 'dest="VIDEO_TS"' in xml
+    assert '<dvdauthor dest="VIDEO_TS">' in xml
+    assert 'jumppad="1"' not in xml
+    assert "<vmgm>" in xml
+    assert "<fpc>jump title 1;</fpc>" in xml
     assert "<vob file=\"/tmp/title1.mpg\"" in xml
     assert "chapters=\"00:00:00.000,00:05:00.000,00:10:00.000\"" in xml
     assert 'format="ntsc"' in xml
@@ -31,6 +34,10 @@ def test_dvdauthor_xml_multi_titles():
         menu_mode=MenuMode.AUTOPLAY,
         tv_standard=TVStandard.PAL,
     )
+    assert '<dvdauthor dest="VIDEO_TS">' in xml
+    assert 'jumppad="1"' not in xml
+    assert "<vmgm>" in xml
+    assert "<fpc>jump title 1;</fpc>" in xml
     assert "<vob file=\"/tmp/ep1.mpg\"" in xml
     assert "<vob file=\"/tmp/ep2.mpg\"" in xml
     assert 'format="pal"' in xml
