@@ -264,4 +264,25 @@ def test_single_vs_dual_layer_recommendations():
     assert "Single-Layer (BD-25) is recommended" in budget_short_bd50.recommendation_reason
 
 
+def test_multi_audio_tracks_bitrate_budget():
+    # 2 hour movie with dual audio: 5.1 (384 kbps) + Stereo Commentary (192 kbps) = 576 kbps total audio
+    budget = calculate_bitrate_budget(
+        total_duration_sec=7200,
+        disc_type=DiscType.DVD5,
+        audio_tracks_kbps=[384, 192],
+        video_count=1,
+    )
+    assert budget.audio_bitrate_kbps == 576
+    assert budget.fits_disc is True
+    # Verify video bitrate adjusts down to accommodate 576 kbps audio + mux overhead
+    single_audio_budget = calculate_bitrate_budget(
+        total_duration_sec=7200,
+        disc_type=DiscType.DVD5,
+        audio_tracks_kbps=[192],
+        video_count=1,
+    )
+    assert budget.video_bitrate_kbps < single_audio_budget.video_bitrate_kbps
+
+
+
 
